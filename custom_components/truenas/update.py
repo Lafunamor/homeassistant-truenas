@@ -122,7 +122,7 @@ class TrueNASAppUpdate(TrueNASEntity, UpdateEntity):
     @property
     def latest_version(self) -> str:
         """Latest version available for install."""
-        if not self._data["running"]:
+        if not self._data.get("running", True):
             # A stopped app cannot be upgraded, do not report a pending update
             return self._data["version"]
 
