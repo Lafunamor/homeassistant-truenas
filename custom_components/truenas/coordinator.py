@@ -27,6 +27,14 @@ _LOGGER = logging.getLogger(__name__)
 
 
 # ---------------------------
+#   _rename_traffic
+# ---------------------------
+def _rename_traffic(name: str) -> str:
+    """Map the netdata traffic legend onto the rx/tx attribute names."""
+    return name.replace("received", "rx").replace("sent", "tx")
+
+
+# ---------------------------
 #   TrueNASControllerData
 # ---------------------------
 class TrueNASCoordinator(DataUpdateCoordinator[None]):
@@ -73,8 +81,6 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
         self.last_updatecheck_update = datetime(1970, 1, 1)
 
         self._is_virtual = False
-        self._version_major = 0
-        self._version_minor = 0
 
     # ---------------------------
     #   connected
@@ -206,24 +212,6 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
                 self.ds["system_info"]["update_jobid"] = 0
                 self.ds["system_info"]["update_state"] = "unknown"
 
-        if not self._version_major:
-            self._version_major = int(
-                self.ds["system_info"]
-                .get("version")
-                .removeprefix("TrueNAS-")
-                .removeprefix("SCALE-")
-                .split(".")[0]
-            )
-
-        if not self._version_minor:
-            self._version_minor = int(
-                self.ds["system_info"]
-                .get("version")
-                .removeprefix("TrueNAS-")
-                .removeprefix("SCALE-")
-                .split(".")[1]
-            )
-
         self._is_virtual = self.ds["system_info"]["system_manufacturer"] in [
             "QEMU",
             "VMware, Inc.",
@@ -316,7 +304,6 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     async def get_systemstats(self) -> None:
         """Get system statistics."""
-        report_epoch = int(datetime.now().replace(microsecond=0).timestamp())
         tmp_graphs = [
             {"name": "load"},
             {"name": "cputemp"},
@@ -325,62 +312,45 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
             {"name": "memory"},
         ]
 
-        for uid, vals in self.ds["interface"].items():
+        for uid in self.ds["interface"]:
             tmp_graphs.append({"name": "interface", "identifier": uid})
 
         if self._is_virtual:
-            tmp_graphs.remove({"name": "cputemp"})
+            tmp_graphs = [tmp for tmp in tmp_graphs if tmp["name"] != "cputemp"]
 
-        for tmp in tmp_graphs:
-            if tmp["name"] in self._systemstats_errored:
-                tmp_graphs.remove(tmp)
+        tmp_graphs = [
+            tmp for tmp in tmp_graphs if tmp["name"] not in self._systemstats_errored
+        ]
 
         if not tmp_graphs:
             return
 
-        tmp_params = [
-            tmp_graphs,
-            {
-                "start": report_epoch - 30,
-                "end": report_epoch - 90,
-                "aggregate": True,
-            },
-        ]
+        tmp_graph = await self._query_graphs(tmp_graphs)
+        if tmp_graph is None:
+            if not self.api.connected():
+                return
 
-        reporting_path = "reporting.netdata_get_data"
+            # Retry every graph on its own, so that a single graph the NAS
+            # cannot report does not cost us all the other statistics.
+            tmp_graph = []
+            failed = []
+            for tmp in tmp_graphs:
+                tmp2 = await self._query_graphs([tmp])
+                if tmp2 is None:
+                    if not self.api.connected():
+                        return
 
-        tmp_graph = await self.api.query(
-            reporting_path,
-            params=tmp_params,
-        )
+                    failed.append(tmp["name"])
+                    self._systemstats_errored.append(tmp["name"])
+                else:
+                    tmp_graph.extend(tmp2)
 
-        if not isinstance(tmp_graph, list):
-            if self.api.error == 500:
-                for tmp in tmp_params["graphs"]:
-                    tmp_params2 = {
-                        [tmp],
-                        {
-                            "start": report_epoch - 30,
-                            "end": report_epoch - 90,
-                            "aggregate": "true",
-                        },
-                    }
-
-                    tmp2 = await self.api.query(
-                        reporting_path,
-                        params=tmp_params2,
-                    )
-                    if not isinstance(tmp2, list) and self.api.error == 500:
-                        self._systemstats_errored.append(tmp["name"])
-
+            if failed:
                 _LOGGER.warning(
                     "TrueNAS %s fetching following graphs failed, check your NAS: %s",
                     self.host,
-                    self._systemstats_errored,
+                    failed,
                 )
-                await self.get_systemstats()
-
-            return
 
         for i in range(len(tmp_graph)):
             if "name" not in tmp_graph[i]:
@@ -402,41 +372,28 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
 
             # CPU usage
             if tmp_graph[i]["name"] == "cpu":
-                tmp_arr = "cpu"
+                tmp_arr = ("cpu",)
                 self._systemstats_process(tmp_arr, tmp_graph[i], "cpu")
                 self.ds["system_info"]["cpu_usage"] = round(
-                    self.ds["system_info"]["cpu_cpu"], 2
+                    self.ds["system_info"].get("cpu_cpu", 0.0), 2
                 )
 
             # Interface
             if tmp_graph[i]["name"] == "interface":
                 tmp_etc = tmp_graph[i]["identifier"]
                 if tmp_etc in self.ds["interface"]:
-                    tmp_graph[i]["legend"] = [
-                        tmp.replace("received", "rx") for tmp in tmp_graph[i]["legend"]
-                    ]
-                    tmp_graph[i]["legend"] = [
-                        tmp.replace("sent", "tx") for tmp in tmp_graph[i]["legend"]
-                    ]
-                    tmp_graph[i]["aggregations"]["mean"] = {
-                        k.replace("received", "rx"): v
-                        for k, v in tmp_graph[i]["aggregations"]["mean"].items()
-                    }
-                    tmp_graph[i]["aggregations"]["mean"] = {
-                        k.replace("sent", "tx"): v
-                        for k, v in tmp_graph[i]["aggregations"]["mean"].items()
-                    }
-
                     tmp_arr = ("rx", "tx")
-                    if "aggregations" in tmp_graph[i]:
-                        for e in range(len(tmp_graph[i]["legend"])):
-                            tmp_var = tmp_graph[i]["legend"][e]
+                    tmp_mean = (tmp_graph[i].get("aggregations") or {}).get("mean")
+                    if tmp_mean:
+                        legend = [
+                            _rename_traffic(tmp)
+                            for tmp in tmp_graph[i].get("legend") or []
+                        ]
+                        tmp_mean = {_rename_traffic(k): v for k, v in tmp_mean.items()}
+
+                        for tmp_var in legend:
                             if tmp_var in tmp_arr:
-                                tmp_val = (
-                                    tmp_graph[i]["aggregations"]["mean"][tmp_var] or 0.0
-                                    if tmp_var in tmp_graph[i]["aggregations"]["mean"]
-                                    else 0.0
-                                )
+                                tmp_val = tmp_mean.get(tmp_var) or 0.0
                                 self.ds["interface"][tmp_etc][tmp_var] = round(
                                     (tmp_val * 0.12207), 2
                                 )
@@ -447,9 +404,9 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
 
             # memory
             if tmp_graph[i]["name"] == "memory":
-                tmp_arr = "available"
+                tmp_arr = ("available",)
                 self.ds["system_info"]["memory-total_value"] = round(
-                    self.ds["system_info"]["physmem"]
+                    self.ds["system_info"].get("physmem", 0)
                 )
 
                 self._systemstats_process(tmp_arr, tmp_graph[i], "memory")
@@ -465,39 +422,58 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
 
             # arcsize
             if tmp_graph[i]["name"] == "arcsize":
-                tmp_arr = "arc_size"
+                # netdata names this dimension "size"; the graph itself is
+                # called arcsize.
+                tmp_arr = ("size", "arc_size")
                 self._systemstats_process(tmp_arr, tmp_graph[i], "arcsize")
+
+    # ---------------------------
+    #   _query_graphs
+    # ---------------------------
+    async def _query_graphs(self, graphs: list) -> list | None:
+        """Query netdata for a set of graphs, None when the call failed."""
+        report_epoch = int(datetime.now().replace(microsecond=0).timestamp())
+        tmp_graph = await self.api.query(
+            "reporting.netdata_get_data",
+            params=[
+                graphs,
+                {
+                    "start": report_epoch - 30,
+                    "end": report_epoch - 90,
+                    "aggregate": True,
+                },
+            ],
+        )
+
+        return tmp_graph if isinstance(tmp_graph, list) else None
 
     # ---------------------------
     #   _systemstats_process
     # ---------------------------
     def _systemstats_process(self, arr, graph, t) -> None:
+        """Store the aggregated values of a graph in system_info."""
         if "aggregations" in graph:
-            for e in range(len(graph["legend"])):
-                tmp_var = graph["legend"][e]
-                if tmp_var in arr:
-                    e = tmp_var
-
-                    tmp_val = graph["aggregations"]["mean"][e] or 0.0
-                    if t == "memory":
-                        if tmp_var == "available":
-                            self.ds["system_info"]["memory-free_value"] = round(tmp_val)
-                    elif t == "cpu":
-                        self.ds["system_info"][f"cpu_{tmp_var}"] = round(tmp_val, 2)
-                    elif t == "load":
-                        self.ds["system_info"][f"load_{tmp_var}"] = round(tmp_val, 2)
-                    elif t == "arcsize":
-                        self.ds["system_info"]["cache_size-arc_value"] = round(
-                            tmp_val, 2
-                        )
-                    else:
-                        self.ds["system_info"][tmp_var] = round(tmp_val, 2)
+            means = graph["aggregations"]["mean"]
+            values = {
+                name: (means[name] or 0.0)
+                for name in graph.get("legend", [])
+                if name in arr and name in means
+            }
         else:
-            for tmp_load in arr:
-                if t == "cpu":
-                    self.ds["system_info"][f"cpu_{tmp_load}"] = 0.0
-                else:
-                    self.ds["system_info"][tmp_load] = 0.0
+            values = {name: 0.0 for name in arr}
+
+        for name, value in values.items():
+            if t == "memory":
+                if name == "available":
+                    self.ds["system_info"]["memory-free_value"] = round(value)
+            elif t == "cpu":
+                self.ds["system_info"][f"cpu_{name}"] = round(value, 2)
+            elif t == "load":
+                self.ds["system_info"][f"load_{name}"] = round(value, 2)
+            elif t == "arcsize":
+                self.ds["system_info"]["cache_size-arc_value"] = round(value, 2)
+            else:
+                self.ds["system_info"][name] = round(value, 2)
 
     # ---------------------------
     #   get_service
