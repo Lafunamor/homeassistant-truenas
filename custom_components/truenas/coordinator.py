@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from datetime import datetime, timedelta
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -49,17 +50,17 @@ def _rename_traffic(name: str) -> str:
 # ---------------------------
 #   TrueNASControllerData
 # ---------------------------
-class TrueNASCoordinator(DataUpdateCoordinator[None]):
+class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """TrueNASCoordinator Class."""
+
+    config_entry: ConfigEntry
 
     def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry):
         """Initialize TrueNASCoordinator."""
-        self.hass = hass
-        self.config_entry: ConfigEntry = config_entry
-
         super().__init__(
-            self.hass,
+            hass,
             _LOGGER,
+            config_entry=config_entry,
             name=DOMAIN,
             update_interval=timedelta(seconds=60),
         )
@@ -93,6 +94,13 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
         self.last_updatecheck_update = datetime(1970, 1, 1)
 
         self._is_virtual = False
+
+    # ---------------------------
+    #   async_close
+    # ---------------------------
+    async def async_close(self) -> None:
+        """Close the connection to TrueNAS."""
+        await self.api.disconnect()
 
     # ---------------------------
     #   connected

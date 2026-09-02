@@ -80,7 +80,7 @@ async def async_add_entities(
                     )
                     await async_check_exist(obj, coordinator, uid)
 
-    await async_update_controller(hass.data[DOMAIN][config_entry.entry_id])
+    await async_update_controller(config_entry.runtime_data)
 
     unsub = async_dispatcher_connect(hass, "update_sensors", async_update_controller)
     config_entry.async_on_unload(unsub)
