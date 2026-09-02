@@ -5,7 +5,7 @@
                 "description": "Настройка интеграции TrueNAS.",
                 "data": {
                     "name": "Название интеграции",
-                    "host": "Хост",
+                    "host": "Хост (можно со схемой и портом, например http://10.0.0.1 или 10.0.0.1:8443)",
                     "api_key": "Ключ API",
                     "verify_ssl": "Проверка SSL-сертификата"
                 }
@@ -13,7 +13,7 @@
             "reconfigure": {
                 "description": "Reconfigure TrueNAS integration.",
                 "data": {
-                    "host": "Host",
+                    "host": "Хост (можно со схемой и портом, например http://10.0.0.1 или 10.0.0.1:8443)",
                     "api_key": "API key",
                     "verify_ssl": "Verify SSL certificate"
                 }
@@ -31,7 +31,8 @@
             "http_used": "The plain HTTP request was sent to HTTPS port. Reverse proxy?",
             "tlsv1_not_supported": "TLSv1 not supported. Reverse proxy?",
             "websocket_not_supported": "WebSocket not supported. Reverse proxy?",
-            "unknown_hostname": "Unknown hostname, check DNS."
+            "unknown_hostname": "Unknown hostname, check DNS.",
+            "cannot_connect": "Ошибка подключения, проверьте адрес и сеть."
         },
         "abort": {
             "reconfigure_successful": "Reconfigure successful."

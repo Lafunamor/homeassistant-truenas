@@ -20,7 +20,6 @@ from homeassistant.const import (
     CONF_VERIFY_SSL,
 )
 from homeassistant.core import callback
-from homeassistant.data_entry_flow import FlowResult
 
 from .const import (
     DEFAULT_DEVICE_NAME,
@@ -92,6 +91,34 @@ class TrueNASConfigFlow(ConfigFlow, domain=DOMAIN):
         """Initialize the config flow."""
         self.truenas_config: dict[str, Any] = {}
 
+    async def _async_test_connection(
+        self, truenas_config: dict[str, Any]
+    ) -> str | None:
+        """Return an error code when the TrueNAS API cannot be reached."""
+        try:
+            api = await self.hass.async_add_executor_job(
+                TrueNASAPI,
+                truenas_config[CONF_HOST],
+                truenas_config[CONF_API_KEY],
+                truenas_config[CONF_VERIFY_SSL],
+            )
+        except ValueError as err:
+            _LOGGER.error("TrueNAS invalid host (%s)", err)
+            return "invalid_hostname"
+
+        try:
+            conn, errorcode = await self.hass.async_add_executor_job(
+                api.connection_test
+            )
+        finally:
+            await self.hass.async_add_executor_job(api.disconnect)
+
+        if conn:
+            return None
+
+        _LOGGER.error("TrueNAS connection error (%s)", errorcode)
+        return errorcode or "cannot_connect"
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -107,20 +134,9 @@ class TrueNASConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "name_exists"
 
             # Test connection
-            api = await self.hass.async_add_executor_job(
-                TrueNASAPI,
-                truenas_config[CONF_HOST],
-                truenas_config[CONF_API_KEY],
-                truenas_config[CONF_VERIFY_SSL],
-            )
-
-            conn, errorcode = await self.hass.async_add_executor_job(
-                api.connection_test
-            )
-
-            if not conn:
+            errorcode = await self._async_test_connection(truenas_config)
+            if errorcode:
                 errors[CONF_HOST] = errorcode
-                _LOGGER.error("TrueNAS connection error (%s)", errorcode)
 
             # Save instance
             if not errors:
@@ -145,20 +161,9 @@ class TrueNASConfigFlow(ConfigFlow, domain=DOMAIN):
             truenas_config.update(user_input)
 
             # Test connection
-            api = await self.hass.async_add_executor_job(
-                TrueNASAPI,
-                truenas_config[CONF_HOST],
-                truenas_config[CONF_API_KEY],
-                truenas_config[CONF_VERIFY_SSL],
-            )
-
-            conn, errorcode = await self.hass.async_add_executor_job(
-                api.connection_test
-            )
-
-            if not conn:
+            errorcode = await self._async_test_connection(truenas_config)
+            if errorcode:
                 errors[CONF_HOST] = errorcode
-                _LOGGER.error("TrueNAS connection error (%s)", errorcode)
 
             # Save instance
             if not errors:
