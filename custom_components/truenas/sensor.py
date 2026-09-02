@@ -37,7 +37,14 @@ async def async_setup_entry(
         "TrueNASClousyncSensor": TrueNASClousyncSensor,
         "TrueNASDatasetSensor": TrueNASDatasetSensor,
     }
-    await async_add_entities(hass, config_entry, dispatcher)
+    await async_add_entities(
+        hass,
+        config_entry,
+        _async_add_entities,
+        dispatcher,
+        SENSOR_TYPES,
+        SENSOR_SERVICES,
+    )
 
 
 # ---------------------------
@@ -51,8 +58,9 @@ class TrueNASSensor(TrueNASEntity, SensorEntity):
         coordinator: TrueNASCoordinator,
         entity_description,
         uid: str | None = None,
+        platform_domain: str | None = None,
     ):
-        super().__init__(coordinator, entity_description, uid)
+        super().__init__(coordinator, entity_description, uid, platform_domain)
         self._attr_suggested_unit_of_measurement = (
             self.entity_description.suggested_unit_of_measurement
         )

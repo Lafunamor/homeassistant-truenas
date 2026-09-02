@@ -36,7 +36,14 @@ async def async_setup_entry(
         "TrueNASUpdate": TrueNASUpdate,
         "TrueNASAppUpdate": TrueNASAppUpdate,
     }
-    await async_add_entities(hass, config_entry, dispatcher)
+    await async_add_entities(
+        hass,
+        config_entry,
+        _async_add_entities,
+        dispatcher,
+        SENSOR_TYPES,
+        SENSOR_SERVICES,
+    )
 
 
 # ---------------------------
@@ -53,9 +60,10 @@ class TrueNASUpdate(TrueNASEntity, UpdateEntity):
         coordinator: TrueNASCoordinator,
         entity_description,
         uid: str | None = None,
+        platform_domain: str | None = None,
     ):
         """Set up device update entity."""
-        super().__init__(coordinator, entity_description, uid)
+        super().__init__(coordinator, entity_description, uid, platform_domain)
 
         self._attr_supported_features = UpdateEntityFeature.INSTALL
         self._attr_supported_features |= UpdateEntityFeature.PROGRESS
@@ -109,9 +117,10 @@ class TrueNASAppUpdate(TrueNASEntity, UpdateEntity):
         coordinator: TrueNASCoordinator,
         entity_description,
         uid: str | None = None,
+        platform_domain: str | None = None,
     ):
         """Set up device update entity."""
-        super().__init__(coordinator, entity_description, uid)
+        super().__init__(coordinator, entity_description, uid, platform_domain)
 
         self._attr_supported_features = UpdateEntityFeature.INSTALL
 
