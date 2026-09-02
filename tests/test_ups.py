@@ -219,3 +219,23 @@ async def test_rating_only_graph_yields_no_value(coordinator) -> None:
 
     assert "current" not in coordinator.ds["ups"]
     assert coordinator.ds["ups"]["frequency"] == 49.9
+
+
+async def test_graph_without_aggregation_yields_no_value(coordinator) -> None:
+    """A variable the driver does not report arrives without a mean.
+
+    Its graph exists and is filled with zeros, but TrueNAS leaves an
+    all-zero dimension out of the aggregation, so nothing has to be told
+    apart from a real reading of zero.
+    """
+    _ups_running(coordinator)
+    coordinator.api.query.side_effect = lambda service, params=None: [
+        {"name": "upsload", "legend": ["time", "load"], "aggregations": {"mean": {}}},
+        {"name": "upstemperature", "legend": ["time", "temp"], "aggregations": {}},
+        {"name": "upscharge", "legend": ["time", "charge"]},
+        _graph("upsruntime", {"runtime": 3045.6666666666665}),
+    ]
+
+    await coordinator.get_ups()
+
+    assert coordinator.ds["ups"] == {"runtime": 3045.67}

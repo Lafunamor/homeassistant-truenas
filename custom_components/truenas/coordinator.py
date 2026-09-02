@@ -1195,6 +1195,12 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         answer successfully with no data when no UPS is attached, so this is
         skipped unless the UPS service is set up; otherwise every
         installation would grow a set of permanently empty sensors.
+
+        A variable the driver does not report still has a graph, filled with
+        zeros. TrueNAS leaves an all-zero dimension out of the aggregation,
+        so those graphs arrive with no mean and produce no sensor - which is
+        what a Back-UPS XS 1000M does for load, temperature, frequency and
+        the output voltage.
         """
         if not self._ups_configured():
             self.ds["ups"] = {}
