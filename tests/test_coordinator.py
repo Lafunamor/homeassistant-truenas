@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -201,3 +203,65 @@ async def test_one_bad_interface_does_not_mute_the_others(coordinator) -> None:
         if graph["name"] == "interface"
     ]
     assert requested == ["eth1"]
+
+
+async def test_real_netdata_legends(coordinator) -> None:
+    """The legend names TrueNAS actually sends must land in the right keys."""
+    # Captured from a live TrueNAS 25.10.5 system.
+    coordinator.api.query.side_effect = lambda service, params=None: [
+        _aggregated("memory", ["time", "available"], {"available": 13086022180.3}),
+        _aggregated(
+            "cpu",
+            ["time", "cpu", "cpu0", "cpu1"],
+            {"cpu": 5.31, "cpu0": 5.39, "cpu1": 5.36},
+        ),
+        _aggregated(
+            "load",
+            ["time", "shortterm", "midterm", "longterm"],
+            {"shortterm": 0.52, "midterm": 1.13, "longterm": 1.16},
+        ),
+        # netdata calls the ARC dimension "size", not "arc_size".
+        _aggregated("arcsize", ["time", "size"], {"size": 6104878524.5}),
+        _aggregated(
+            "cputemp",
+            ["time", "cpu0", "cpu1", "cpu"],
+            {"cpu0": 32.2, "cpu1": 35.3, "cpu": 33.7},
+        ),
+    ]
+    coordinator.ds["system_info"]["physmem"] = 34359738368
+
+    await coordinator.get_systemstats()
+
+    system_info = coordinator.ds["system_info"]
+    assert system_info["cache_size-arc_value"] == 6104878524.5
+    assert system_info["cpu_usage"] == 5.31
+    assert system_info["load_shortterm"] == 0.52
+    assert system_info["load_longterm"] == 1.16
+    assert system_info["cpu_temperature"] == 35.3
+    assert system_info["memory-total_value"] == 34359738368
+    assert system_info["memory-free_value"] == round(13086022180.3)
+    # used is derived, the graph does not report it
+    assert system_info["memory-used_value"] == 34359738368 - round(13086022180.3)
+
+
+async def test_no_junk_cpu_attributes(coordinator) -> None:
+    """Per-core legend entries must not become cpu_* attributes."""
+    coordinator.api.query.side_effect = lambda service, params=None: [
+        _aggregated(
+            "cpu",
+            ["time", "cpu", "cpu0", "cpu1"],
+            {"cpu": 5.0, "cpu0": 4.0, "cpu1": 6.0},
+        )
+    ]
+
+    await coordinator.get_systemstats()
+
+    # cpu_cpu is the internal key the overall figure lands in; per-core
+    # entries and the time axis must not become attributes of their own.
+    junk = [
+        k
+        for k in coordinator.ds["system_info"]
+        if re.fullmatch(r"cpu_cpu\d+", k) or k == "cpu_time"
+    ]
+    assert junk == []
+    assert coordinator.ds["system_info"]["cpu_usage"] == 5.0

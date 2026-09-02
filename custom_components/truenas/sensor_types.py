@@ -92,20 +92,16 @@ DEVICE_ATTRIBUTES_DISK = [
     "identifier",
 ]
 
-DEVICE_ATTRIBUTES_CPU = [
-    "cpu_softirq",
-    "cpu_system",
-    "cpu_user",
-    "cpu_nice",
-    "cpu_iowait",
-    "cpu_idle",
-]
+# TrueNAS reports an overall figure and one per core for the cpu graph, not
+# the per-mode breakdown this list used to advertise, so those attributes
+# could only ever read 0.
+DEVICE_ATTRIBUTES_CPU: list[str] = []
 
+# The memory graph reports available memory only; cached and buffered are
+# not part of it, so they used to read 0 forever.
 DEVICE_ATTRIBUTES_MEMORY = [
     "memory-used_value",
     "memory-free_value",
-    "memory-cached_value",
-    "memory-buffered_value",
     "memory-total_value",
 ]
 

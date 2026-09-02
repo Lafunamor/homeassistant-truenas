@@ -168,17 +168,10 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
                 {"name": "load_shortterm", "default": 0.0},
                 {"name": "load_midterm", "default": 0.0},
                 {"name": "load_longterm", "default": 0.0},
-                {"name": "cpu_interrupt", "default": 0.0},
-                {"name": "cpu_system", "default": 0.0},
-                {"name": "cpu_user", "default": 0.0},
-                {"name": "cpu_nice", "default": 0.0},
-                {"name": "cpu_idle", "default": 0.0},
                 {"name": "cpu_usage", "default": 0.0},
                 {"name": "cache_size-arc_value", "default": 0.0},
                 {"name": "memory-used_value", "default": 0.0},
                 {"name": "memory-free_value", "default": 0.0},
-                {"name": "memory-cached_value", "default": 0.0},
-                {"name": "memory-buffered_value", "default": 0.0},
                 {"name": "memory-total_value", "default": 0.0},
                 {"name": "memory-usage_percent", "default": 0},
                 {"name": "update_available", "type": "bool", "default": False},
@@ -385,6 +378,8 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
 
             # CPU usage
             if tmp_graph[i]["name"] == "cpu":
+                # The legend is ("cpu", "cpu0", "cpu1", ...): an overall value
+                # and one per core. There is no per-mode breakdown to read.
                 tmp_arr = ("cpu",)
                 self._systemstats_process(tmp_arr, tmp_graph[i], "cpu")
                 self.ds["system_info"]["cpu_usage"] = round(
@@ -423,6 +418,15 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
                 )
 
                 self._systemstats_process(tmp_arr, tmp_graph[i], "memory")
+
+                # netdata reports only the available memory for this graph,
+                # so used is derived; cached and buffered are not obtainable.
+                self.ds["system_info"]["memory-used_value"] = max(
+                    self.ds["system_info"]["memory-total_value"]
+                    - self.ds["system_info"]["memory-free_value"],
+                    0,
+                )
+
                 if self.ds["system_info"]["memory-total_value"] > 0:
                     self.ds["system_info"]["memory-usage_percent"] = round(
                         100
