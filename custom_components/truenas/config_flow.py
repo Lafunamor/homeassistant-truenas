@@ -123,6 +123,12 @@ class TrueNASConfigFlow(ConfigFlow, domain=DOMAIN):
                 truenas_config[CONF_SSL] = use_ssl
                 return None
 
+            if errorcode == "invalid_key" and not use_ssl:
+                # TrueNAS answers on the plain HTTP port but refuses to
+                # authenticate an API key over an unencrypted transport, so a
+                # rejected key here usually means the HTTPS port was missed.
+                errorcode = "invalid_key_insecure"
+
             first_error = first_error or errorcode
             if errorcode not in RETRYABLE_SCHEME_ERRORS:
                 return errorcode

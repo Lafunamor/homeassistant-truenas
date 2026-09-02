@@ -188,3 +188,34 @@ async def test_user_flow_stops_on_invalid_key(hass: HomeAssistant) -> None:
 
     assert result["errors"] == {CONF_HOST: "invalid_key"}
     assert len(StubAPI.instances) == 1
+
+
+async def test_key_rejected_over_plaintext_is_explained(hass: HomeAssistant) -> None:
+    """A key rejected on the plain HTTP fallback names the likely cause."""
+    StubAPI.results_by_scheme = {
+        True: (False, "connection_refused"),
+        False: (False, "invalid_key"),
+    }
+    with patch("custom_components.truenas.config_flow.TrueNASAPI", StubAPI):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {**USER_INPUT, CONF_SSL: True}
+        )
+
+    assert result["errors"] == {CONF_HOST: "invalid_key_insecure"}
+
+
+async def test_key_rejected_over_tls_is_reported_as_is(hass: HomeAssistant) -> None:
+    """Over TLS a rejected key is simply a rejected key."""
+    StubAPI.results_by_scheme = {True: (False, "invalid_key"), False: (True, "")}
+    with patch("custom_components.truenas.config_flow.TrueNASAPI", StubAPI):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {**USER_INPUT, CONF_SSL: True}
+        )
+
+    assert result["errors"] == {CONF_HOST: "invalid_key"}

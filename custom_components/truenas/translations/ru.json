@@ -5,7 +5,7 @@
                 "description": "Настройка интеграции TrueNAS.",
                 "data": {
                     "name": "Название интеграции",
-                    "host": "Хост",
+                    "host": "Хост (можно указать порт, например 10.0.0.1:8443)",
                     "api_key": "Ключ API",
                     "ssl": "Использовать HTTPS (переключится на HTTP, если ничего не отвечает)",
                     "verify_ssl": "Проверка SSL-сертификата"
@@ -14,7 +14,7 @@
             "reconfigure": {
                 "description": "Reconfigure TrueNAS integration.",
                 "data": {
-                    "host": "Хост",
+                    "host": "Хост (можно указать порт, например 10.0.0.1:8443)",
                     "api_key": "API key",
                     "ssl": "Использовать HTTPS (переключится на HTTP, если ничего не отвечает)",
                     "verify_ssl": "Verify SSL certificate"
@@ -34,7 +34,8 @@
             "tlsv1_not_supported": "TLSv1 not supported. Reverse proxy?",
             "websocket_not_supported": "WebSocket not supported. Reverse proxy?",
             "unknown_hostname": "Unknown hostname, check DNS.",
-            "cannot_connect": "Ошибка подключения, проверьте адрес и сеть."
+            "cannot_connect": "Ошибка подключения, проверьте адрес и сеть.",
+            "invalid_key_insecure": "Ошибка входа по незашифрованному соединению. TrueNAS принимает API-ключи только по HTTPS - проверьте ключ и укажите в адресе порт HTTPS (он не всегда 443)."
         },
         "abort": {
             "reconfigure_successful": "Reconfigure successful."

@@ -5,7 +5,7 @@
                 "description": "Nastavenie integrácie TrueNAS.",
                 "data": {
                     "name": "Názov integrácie",
-                    "host": "Hostiteľ",
+                    "host": "Hostiteľ (možno uviesť port, napr. 10.0.0.1:8443)",
                     "api_key": "API kľúč",
                     "ssl": "Použiť HTTPS (prepne na obyčajné HTTP, ak nič neodpovedá)",
                     "verify_ssl": "Overte certifikát SSL"
@@ -14,7 +14,7 @@
             "reconfigure": {
                 "description": "Reconfigure TrueNAS integration.",
                 "data": {
-                    "host": "Hostiteľ",
+                    "host": "Hostiteľ (možno uviesť port, napr. 10.0.0.1:8443)",
                     "api_key": "API key",
                     "ssl": "Použiť HTTPS (prepne na obyčajné HTTP, ak nič neodpovedá)",
                     "verify_ssl": "Verify SSL certificate"
@@ -34,7 +34,8 @@
             "tlsv1_not_supported": "TLSv1 not supported. Reverse proxy?",
             "websocket_not_supported": "WebSocket not supported. Reverse proxy?",
             "unknown_hostname": "Unknown hostname, check DNS.",
-            "cannot_connect": "Pripojenie zlyhalo, skontrolujte hostiteľa a sieť."
+            "cannot_connect": "Pripojenie zlyhalo, skontrolujte hostiteľa a sieť.",
+            "invalid_key_insecure": "Prihlásenie cez nešifrované spojenie zlyhalo. TrueNAS prijíma API kľúče iba cez HTTPS - skontrolujte kľúč a či hostiteľ obsahuje HTTPS port (nie je to vždy 443)."
         },
         "abort": {
             "reconfigure_successful": "Reconfigure successful."
