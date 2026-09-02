@@ -103,7 +103,12 @@ def parse_api(
 
     if not source:
         if not key and not key_search:
-            data = fill_defaults(data, vals)
+            if vals:
+                data = fill_defaults(data, vals)
+
+            if ensure_vals:
+                data = fill_ensure_vals(data, None, ensure_vals)
+
         return data
 
     if debug:
