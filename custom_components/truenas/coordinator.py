@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from homeassistant.const import (
@@ -88,7 +89,10 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
     async def _async_update_data(self):
         """Update TrueNAS data."""
         if not self.api.connected():
-            await self.api.connect()
+            if not await self.api.connect() and self.api.error == "invalid_key":
+                raise ConfigEntryAuthFailed(
+                    "TrueNAS rejected the API key, it may have been revoked"
+                )
 
         jobs = [
             self.get_systeminfo,
@@ -114,6 +118,11 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
             self.last_updatecheck_update = datetime.now().replace(microsecond=0)
 
         if not self.api.connected():
+            if self.api.error == "invalid_key":
+                raise ConfigEntryAuthFailed(
+                    "TrueNAS rejected the API key, it may have been revoked"
+                )
+
             raise UpdateFailed("TrueNas Disconnected")
 
         return self.ds

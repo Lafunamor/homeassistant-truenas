@@ -19,6 +19,12 @@
                     "ssl": "Usar HTTPS (recurre a HTTP simple si no responde nada)",
                     "verify_ssl": "Verify SSL certificate"
                 }
+            },
+            "reauth_confirm": {
+                "description": "La clave de API de {name} fue rechazada. Introduce una nueva.",
+                "data": {
+                    "api_key": "Clave de API"
+                }
             }
         },
         "error": {
@@ -38,7 +44,8 @@
             "invalid_key_insecure": "Error de inicio de sesión en una conexión sin cifrar. TrueNAS solo acepta claves de API por HTTPS: comprueba la clave y que el host incluya el puerto HTTPS (no siempre es 443)."
         },
         "abort": {
-            "reconfigure_successful": "Reconfigure successful."
+            "reconfigure_successful": "Reconfigure successful.",
+            "reauth_successful": "Reautenticación correcta."
         }
     }
 }

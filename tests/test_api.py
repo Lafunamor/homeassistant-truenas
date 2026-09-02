@@ -310,3 +310,26 @@ async def test_verified_context_has_a_trust_store() -> None:
     assert context.verify_mode is ssl.CERT_REQUIRED
     assert context.check_hostname is True
     assert context.get_ca_certs(), "no CA certificates loaded"
+
+
+async def test_login_rpc_error_is_an_auth_failure(connect_factory) -> None:
+    """A key rejected with an error envelope must still trigger reauth."""
+    created = connect_factory(
+        [
+            lambda p: {
+                "jsonrpc": "2.0",
+                "id": p["id"],
+                "error": {
+                    "code": -32001,
+                    "message": "Method call error",
+                    "data": {"errname": "EAUTHFAIL", "reason": "Invalid API key"},
+                },
+            }
+        ]
+    )
+    api = TrueNASAPI("10.0.0.1", "expired-key", False)
+
+    assert await api.connect() is False
+    # not "EAUTHFAIL": the coordinator matches on invalid_key to start reauth
+    assert api.error == "invalid_key"
+    assert created[0].closed is True

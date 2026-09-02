@@ -202,7 +202,15 @@ class TrueNASAPI(object):
 
             self._connected = result is True
             if not self._connected:
-                self._error = self._error or "invalid_key"
+                # Any failure of the login call itself is an authentication
+                # failure, whether the NAS answers with result: false or with
+                # a JSON-RPC error envelope. Transport problems raise instead
+                # of reaching this point.
+                self._error = "invalid_key"
+                if not self._error_logged:
+                    _LOGGER.error("TrueNAS %s rejected the API key", self._host)
+
+                self._error_logged = True
                 await self._close()
         except asyncio.CancelledError:
             await self._close()

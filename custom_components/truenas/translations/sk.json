@@ -19,6 +19,12 @@
                     "ssl": "Použiť HTTPS (prepne na obyčajné HTTP, ak nič neodpovedá)",
                     "verify_ssl": "Verify SSL certificate"
                 }
+            },
+            "reauth_confirm": {
+                "description": "API kľúč pre {name} bol odmietnutý. Zadajte nový.",
+                "data": {
+                    "api_key": "API kľúč"
+                }
             }
         },
         "error": {
@@ -38,7 +44,8 @@
             "invalid_key_insecure": "Prihlásenie cez nešifrované spojenie zlyhalo. TrueNAS prijíma API kľúče iba cez HTTPS - skontrolujte kľúč a či hostiteľ obsahuje HTTPS port (nie je to vždy 443)."
         },
         "abort": {
-            "reconfigure_successful": "Reconfigure successful."
+            "reconfigure_successful": "Reconfigure successful.",
+            "reauth_successful": "Opätovné overenie bolo úspešné."
         }
     }
 }

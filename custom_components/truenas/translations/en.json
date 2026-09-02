@@ -19,6 +19,12 @@
                     "ssl": "Use HTTPS (falls back to plain HTTP if nothing is listening)",
                     "verify_ssl": "Verify SSL certificate"
                 }
+            },
+            "reauth_confirm": {
+                "description": "The API key for {name} was rejected. Enter a new one.",
+                "data": {
+                    "api_key": "API key"
+                }
             }
         },
         "error": {
@@ -38,7 +44,8 @@
             "invalid_key_insecure": "Login failed over an unencrypted connection. TrueNAS only accepts API keys over HTTPS - check the key, and that the host includes the HTTPS port (it is not always 443)."
         },
         "abort": {
-            "reconfigure_successful": "Reconfigure successful."
+            "reconfigure_successful": "Reconfigure successful.",
+            "reauth_successful": "Re-authentication successful."
         }
     }
 }

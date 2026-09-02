@@ -19,6 +19,12 @@
                     "ssl": "Использовать HTTPS (переключится на HTTP, если ничего не отвечает)",
                     "verify_ssl": "Verify SSL certificate"
                 }
+            },
+            "reauth_confirm": {
+                "description": "API-ключ для {name} отклонён. Введите новый.",
+                "data": {
+                    "api_key": "API-ключ"
+                }
             }
         },
         "error": {
@@ -38,7 +44,8 @@
             "invalid_key_insecure": "Ошибка входа по незашифрованному соединению. TrueNAS принимает API-ключи только по HTTPS - проверьте ключ и укажите в адресе порт HTTPS (он не всегда 443)."
         },
         "abort": {
-            "reconfigure_successful": "Reconfigure successful."
+            "reconfigure_successful": "Reconfigure successful.",
+            "reauth_successful": "Повторная аутентификация выполнена."
         }
     }
 }
