@@ -371,9 +371,12 @@ class TrueNASAPI(object):
     # ---------------------------
     async def _receive(self, message_id: int) -> dict | None:
         """Read messages until the response for message_id arrives."""
-        assert self._ws is not None
+        ws = self._ws
+        if ws is None:
+            raise ConnectionError("not connected")
+
         while True:
-            message = await self._ws.recv()
+            message = await ws.recv()
             if isinstance(message, bytes):
                 message = message.decode("utf-8", "replace")
 
