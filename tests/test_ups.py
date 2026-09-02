@@ -175,3 +175,47 @@ async def test_enabled_but_stopped_is_still_collected(coordinator) -> None:
     await coordinator.get_ups()
 
     assert coordinator.ds["ups"]["charge"] == 55.0
+
+
+async def test_ratings_are_not_readings(coordinator) -> None:
+    """The graphs of a real UPS carry its ratings next to the measurement.
+
+    This is the reply of a TrueNAS with a Back-UPS XS 1000M attached: the
+    voltage graphs report the nominal voltage as a second dimension, and the
+    graphs the driver does not feed come back empty.
+    """
+    _ups_running(coordinator, running=True, enable=False)
+    coordinator.api.query.side_effect = lambda service, params=None: [
+        _graph("upscharge", {"charge": 90.0}),
+        _graph("upsruntime", {"runtime": 3007.4333333333334}),
+        _graph("upsload", {}),
+        _graph("upstemperature", {}),
+        _graph("upscurrent", {}),
+        _graph("upsfrequency", {}),
+        _graph("upsvoltage", {"voltage": 28.399999999999984, "nominal": 24.0}, "battery"),
+        _graph("upsvoltage", {"voltage": 235.7, "nominal": 230.0}, "input"),
+        _graph("upsvoltage", {}, "output"),
+    ]
+
+    await coordinator.get_ups()
+
+    assert coordinator.ds["ups"] == {
+        "charge": 90.0,
+        "runtime": 3007.43,
+        "voltage_battery": 28.4,
+        "voltage_input": 235.7,
+    }
+
+
+async def test_rating_only_graph_yields_no_value(coordinator) -> None:
+    """A graph that reports nothing but a rating is not a measurement."""
+    _ups_running(coordinator)
+    coordinator.api.query.side_effect = lambda service, params=None: [
+        _graph("upscurrent", {"nominal": 4.0}),
+        _graph("upsfrequency", {"frequency": 49.9, "nominal": 50.0}),
+    ]
+
+    await coordinator.get_ups()
+
+    assert "current" not in coordinator.ds["ups"]
+    assert coordinator.ds["ups"]["frequency"] == 49.9

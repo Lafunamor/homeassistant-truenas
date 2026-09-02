@@ -28,8 +28,8 @@ CONF_DISK_TEMPERATURES = "disk_temperatures"
 DEFAULT_DISK_TEMPERATURES = True
 
 # UPS statistics come from the reporting graphs; there is no ups.* method
-# that reports status, only configuration. Each of these graphs carries a
-# single dimension whose name depends on the UPS driver, so the value is
+# that reports status, only configuration. Each of these graphs carries one
+# measured dimension whose name depends on the UPS driver, so the value is
 # read by position rather than by name.
 UPS_SERVICE = "ups"
 UPS_GRAPHS = (
@@ -43,6 +43,13 @@ UPS_GRAPHS = (
     ("upsvoltage", "input", "voltage_input"),
     ("upsvoltage", "output", "voltage_output"),
 )
+
+# Besides the measurement, a graph can carry the ratings of the UPS - the
+# nominal input voltage, the high and low marks of the battery, the fault
+# voltage. Those are constants of the hardware rather than readings, and a
+# Back-UPS XS 1000M reports several of them, so they are dropped before the
+# measured dimension is read.
+UPS_RATING_DIMENSIONS = ("nominal", "high", "low", "fault")
 
 # System update API. TrueNAS 25.04 replaced update.check_available with
 # update.status, and repurposed update.update to change the update settings

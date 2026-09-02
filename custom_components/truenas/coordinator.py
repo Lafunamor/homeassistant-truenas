@@ -36,6 +36,7 @@ from .const import (
     UPDATE_RUN,
     UPDATE_STATUS,
     UPS_GRAPHS,
+    UPS_RATING_DIMENSIONS,
     UPS_SERVICE,
     VM_API_CONTAINER,
     VM_API_LEGACY,
@@ -1219,11 +1220,13 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             means = (graph.get("aggregations") or {}).get("mean") or {}
             readings = [
                 value
-                for value in means.values()
-                if isinstance(value, (int, float)) and not isinstance(value, bool)
+                for name, value in means.items()
+                if isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and name not in UPS_RATING_DIMENSIONS
             ]
-            # Each UPS graph carries exactly one dimension, but its name
-            # depends on the driver, so it is read by position.
+            # What is left is the single measured dimension of the graph.
+            # Its name depends on the driver, so it is read by position.
             if len(readings) == 1:
                 values[key] = round(readings[0], 2)
 
