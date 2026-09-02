@@ -47,5 +47,15 @@
             "reconfigure_successful": "Reconfigure successful.",
             "reauth_successful": "Re-authentication successful."
         }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Options",
+                "data": {
+                    "disk_temperatures": "Read disk temperatures (turn off on TrueNAS 25.04 and older, where reading SMART data stops disks spinning down)"
+                }
+            }
+        }
     }
 }

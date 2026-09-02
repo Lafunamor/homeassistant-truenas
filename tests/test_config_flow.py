@@ -16,6 +16,8 @@ from homeassistant.const import (
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+
 from custom_components.truenas.const import DOMAIN
 
 USER_INPUT = {
@@ -219,3 +221,36 @@ async def test_key_rejected_over_tls_is_reported_as_is(hass: HomeAssistant) -> N
         )
 
     assert result["errors"] == {CONF_HOST: "invalid_key"}
+
+
+async def test_options_flow_stores_the_setting(hass: HomeAssistant) -> None:
+    """The disk temperature setting can be changed after setup."""
+    from custom_components.truenas.const import CONF_DISK_TEMPERATURES
+
+    entry = MockConfigEntry(domain=DOMAIN, data=USER_INPUT)
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {CONF_DISK_TEMPERATURES: False}
+    )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options[CONF_DISK_TEMPERATURES] is False
+
+
+async def test_options_flow_defaults_to_reading_temperatures(
+    hass: HomeAssistant,
+) -> None:
+    """Existing entries keep the previous behaviour."""
+    from custom_components.truenas.const import CONF_DISK_TEMPERATURES
+
+    entry = MockConfigEntry(domain=DOMAIN, data=USER_INPUT)
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+
+    assert result["data_schema"]({})[CONF_DISK_TEMPERATURES] is True

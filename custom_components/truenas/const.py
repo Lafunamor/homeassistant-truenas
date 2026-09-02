@@ -18,6 +18,15 @@ ATTRIBUTION = "Data provided by TrueNAS integration"
 # How many update cycles a reporting graph stays muted after it failed.
 SYSTEMSTATS_RETRY_AFTER = 60
 
+# disk.temperatures reads SMART data. TrueNAS caches the result for five
+# minutes, so asking more often cannot return anything new.
+DISK_TEMPERATURE_INTERVAL = 300
+
+# Reading SMART data wakes a sleeping disk on TrueNAS 25.04 and older, which
+# stops it spinning down at all. Users of those versions can turn it off.
+CONF_DISK_TEMPERATURES = "disk_temperatures"
+DEFAULT_DISK_TEMPERATURES = True
+
 # System update API. TrueNAS 25.04 replaced update.check_available with
 # update.status, and repurposed update.update to change the update settings
 # rather than install an update - update.run installs one.

@@ -25,7 +25,10 @@ from homeassistant.util.dt import utc_from_timestamp
 
 from .apiparser import parse_api
 from .const import (
+    CONF_DISK_TEMPERATURES,
+    DEFAULT_DISK_TEMPERATURES,
     DEFAULT_SSL,
+    DISK_TEMPERATURE_INTERVAL,
     DOMAIN,
     LEGACY_UPDATE_CHECK,
     LEGACY_UPDATE_RUN,
@@ -111,6 +114,8 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         self._is_virtual = False
         self._methods: set[str] | None = None
+        self._disk_temperatures: dict[str, Any] = {}
+        self._disk_temperatures_read = datetime(1970, 1, 1)
 
     # ---------------------------
     #   supports
@@ -981,21 +986,43 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         self.ds["disk"] = disk
 
-        # Get disk temperatures
+        await self._get_disk_temperatures()
+
+    # ---------------------------
+    #   _get_disk_temperatures
+    # ---------------------------
+    async def _get_disk_temperatures(self) -> None:
+        """Add SMART temperatures to the disks.
+
+        The reading is cached between updates: disk.temperatures reads SMART
+        data, which TrueNAS itself only refreshes every five minutes, and on
+        TrueNAS 25.04 and older that read wakes a sleeping disk.
+        """
+        if not self.config_entry.options.get(
+            CONF_DISK_TEMPERATURES, DEFAULT_DISK_TEMPERATURES
+        ):
+            for vals in self.ds["disk"].values():
+                vals["temperature"] = None
+
+            return
+
         if not self.supports("disk.temperatures"):
             return
 
-        temps = await self.api.query(
-            "disk.temperatures",
-            params={},
-        )
+        now = datetime.now().replace(microsecond=0)
+        if (now - self._disk_temperatures_read).total_seconds() >= (
+            DISK_TEMPERATURE_INTERVAL
+        ):
+            temps = await self.api.query("disk.temperatures", params={})
+            if isinstance(temps, dict):
+                self._disk_temperatures = temps
+                self._disk_temperatures_read = now
 
-        if temps:
-            for uid, vals in self.ds["disk"].items():
-                if vals["name"] in temps:  # looks for devname here
-                    self.ds["disk"][uid]["temperature"] = temps[vals["name"]]
-                    # return devname temp to uid disk
-                    # I feel like this will break in the future when TrueNAS updates to a more sensible system. Currently their own long term stats are broken by the changing devnames.
+        for vals in self.ds["disk"].values():
+            # disk.temperatures is keyed by device name, the disks by
+            # identifier, so this looks the reading up by devname.
+            if vals["name"] in self._disk_temperatures:
+                vals["temperature"] = self._disk_temperatures[vals["name"]]
 
     # ---------------------------
     #   get_vm

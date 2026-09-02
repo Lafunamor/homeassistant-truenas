@@ -10,8 +10,10 @@ import voluptuous as vol
 
 from homeassistant.config_entries import (
     CONN_CLASS_LOCAL_POLL,
+    ConfigEntry,
     ConfigFlow,
     ConfigFlowResult,
+    OptionsFlow,
 )
 from homeassistant.const import (
     CONF_API_KEY,
@@ -23,7 +25,9 @@ from homeassistant.const import (
 from homeassistant.core import callback
 
 from .const import (
+    CONF_DISK_TEMPERATURES,
     DEFAULT_DEVICE_NAME,
+    DEFAULT_DISK_TEMPERATURES,
     DEFAULT_HOST,
     DEFAULT_SSL,
     DEFAULT_SSL_VERIFY,
@@ -96,6 +100,12 @@ class TrueNASConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
     CONNECTION_CLASS = CONN_CLASS_LOCAL_POLL
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        """Return the options flow."""
+        return TrueNASOptionsFlow()
 
     def __init__(self) -> None:
         """Initialize the config flow."""
@@ -250,4 +260,33 @@ class TrueNASConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="reconfigure",
             data_schema=_reconfigure_schema(reconfigure_entry.data),
             errors=errors,
+        )
+
+
+# ---------------------------
+#   TrueNASOptionsFlow
+# ---------------------------
+class TrueNASOptionsFlow(OptionsFlow):
+    """Handle the options of a configured TrueNAS."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+
+        options = self.config_entry.options
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_DISK_TEMPERATURES,
+                        default=options.get(
+                            CONF_DISK_TEMPERATURES, DEFAULT_DISK_TEMPERATURES
+                        ),
+                    ): bool,
+                }
+            ),
         )

@@ -47,5 +47,15 @@
             "reconfigure_successful": "Reconfigure successful.",
             "reauth_successful": "Opätovné overenie bolo úspešné."
         }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Možnosti",
+                "data": {
+                    "disk_temperatures": "Čítať teploty diskov (vypnite na TrueNAS 25.04 a starších, kde čítanie SMART bráni diskom v uspaní)"
+                }
+            }
+        }
     }
 }

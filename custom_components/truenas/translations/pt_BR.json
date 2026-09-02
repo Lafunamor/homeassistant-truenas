@@ -47,5 +47,15 @@
             "reconfigure_successful": "Reconfigure successful.",
             "reauth_successful": "Reautenticação concluída."
         }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Opções",
+                "data": {
+                    "disk_temperatures": "Ler temperaturas dos discos (desative no TrueNAS 25.04 e anteriores, onde ler SMART impede os discos de hibernar)"
+                }
+            }
+        }
     }
 }
