@@ -96,6 +96,37 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.last_updatecheck_update = datetime(1970, 1, 1)
 
         self._is_virtual = False
+        self._methods: set[str] | None = None
+
+    # ---------------------------
+    #   supports
+    # ---------------------------
+    def supports(self, method: str) -> bool:
+        """Return whether the NAS exposes an API method.
+
+        Fails open: when the method list could not be retrieved the call is
+        attempted anyway, so a NAS that does not implement core.get_methods
+        keeps behaving as before.
+        """
+        return self._methods is None or method in self._methods
+
+    # ---------------------------
+    #   get_methods
+    # ---------------------------
+    async def get_methods(self) -> None:
+        """Learn which API methods this TrueNAS exposes."""
+        result = await self.api.query("core.get_methods")
+        if not isinstance(result, (dict, list)):
+            _LOGGER.debug(
+                "TrueNAS %s did not report its API methods, calling everything",
+                self.host,
+            )
+            return
+
+        self._methods = set(result)
+        _LOGGER.debug(
+            "TrueNAS %s exposes %s API methods", self.host, len(self._methods)
+        )
 
     # ---------------------------
     #   _query_collection
@@ -133,10 +164,14 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self):
         """Update TrueNAS data."""
         if not self.api.connected():
+            self._methods = None
             if not await self.api.connect() and self.api.error == "invalid_key":
                 raise ConfigEntryAuthFailed(
                     "TrueNAS rejected the API key, it may have been revoked"
                 )
+
+        if self.api.connected() and self._methods is None:
+            await self.get_methods()
 
         jobs = [
             self.get_systeminfo,
@@ -338,6 +373,9 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ---------------------------
     async def get_systemstats(self) -> None:
         """Get system statistics."""
+        if not self.supports("reporting.netdata_get_data"):
+            return
+
         tmp_graphs = [
             {"name": "load"},
             {"name": "cputemp"},
@@ -877,6 +915,9 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.ds["disk"] = disk
 
         # Get disk temperatures
+        if not self.supports("disk.temperatures"):
+            return
+
         temps = await self.api.query(
             "disk.temperatures",
             params={},
@@ -925,6 +966,9 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ---------------------------
     async def get_cloudsync(self) -> None:
         """Get cloudsync from TrueNAS."""
+        if not self.supports("cloudsync.query"):
+            return
+
         cloudsync = await self._query_collection(
             "cloudsync.query",
             key="id",
@@ -967,6 +1011,9 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ---------------------------
     async def get_replication(self) -> None:
         """Get replication from TrueNAS."""
+        if not self.supports("replication.query"):
+            return
+
         replication = await self._query_collection(
             "replication.query",
             key="id",
@@ -1011,7 +1058,10 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     #   get_snapshottask
     # ---------------------------
     async def get_snapshottask(self) -> None:
-        """Get replication from TrueNAS."""
+        """Get periodic snapshot tasks from TrueNAS."""
+        if not self.supports("pool.snapshottask.query"):
+            return
+
         snapshottask = await self._query_collection(
             "pool.snapshottask.query",
             key="id",
@@ -1044,6 +1094,9 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ---------------------------
     async def get_app(self) -> None:
         """Get Apps from TrueNAS."""
+        if not self.supports("app.query"):
+            return
+
         app = await self._query_collection(
             "app.query",
             key="id",
