@@ -34,6 +34,10 @@ VM_API_LEGACY = "vm"
 VM_QUERY_VIRT = "virt.instance.query"
 VM_QUERY_LEGACY = "vm.query"
 
+# Snapshot creation. zfs.snapshot.create, which the integration used to
+# call, does not exist on any current TrueNAS.
+SNAPSHOT_CREATE = "pool.snapshot.create"
+
 DEFAULT_HOST = "10.0.0.1"
 DEFAULT_USERNAME = "admin"
 

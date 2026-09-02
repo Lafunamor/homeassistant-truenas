@@ -165,3 +165,24 @@ async def test_system_update_method(coordinator) -> None:
 
     coordinator._methods = {"update.update"}
     assert coordinator.system_update_method() == "update.update"
+
+
+# ---------------------------
+#   dataset snapshot
+# ---------------------------
+async def test_dataset_snapshot_uses_an_existing_method(hass) -> None:
+    """The snapshot service must call a method TrueNAS actually implements."""
+    from custom_components.truenas.const import SNAPSHOT_CREATE
+    from custom_components.truenas.sensor import TrueNASDatasetSensor
+
+    sensor = TrueNASDatasetSensor.__new__(TrueNASDatasetSensor)
+    sensor._data = {"name": "tank/media"}
+    sensor.coordinator = MagicMock()
+    sensor.coordinator.api.query = AsyncMock()
+
+    await sensor.snapshot()
+
+    method, payload = sensor.coordinator.api.query.call_args.args
+    assert method == SNAPSHOT_CREATE == "pool.snapshot.create"
+    assert payload["dataset"] == "tank/media"
+    assert payload["name"].startswith("custom-")

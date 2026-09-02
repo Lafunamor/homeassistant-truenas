@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import SNAPSHOT_CREATE
 from .coordinator import TrueNASCoordinator
 from .entity import TrueNASEntity, async_add_entities
 from .sensor_types import (
@@ -115,7 +116,7 @@ class TrueNASDatasetSensor(TrueNASSensor):
         """Create dataset snapshot."""
         ts = datetime.now().isoformat(sep="_", timespec="microseconds")
         await self.coordinator.api.query(
-            "zfs.snapshot.create",
+            SNAPSHOT_CREATE,
             {"dataset": f"{self._data['name']}", "name": f"custom-{ts}"},
         )
 
