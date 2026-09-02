@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.config_entries import ConfigEntryState
@@ -25,8 +25,10 @@ def api_fixture():
     """Patch the API used by the coordinator with a connected stub."""
     api = MagicMock()
     api.connected.return_value = True
-    api.query.return_value = None
     api.error = ""
+    api.query = AsyncMock(return_value=None)
+    api.connect = AsyncMock(return_value=True)
+    api.disconnect = AsyncMock()
     with patch("custom_components.truenas.coordinator.TrueNASAPI", return_value=api):
         yield api
 

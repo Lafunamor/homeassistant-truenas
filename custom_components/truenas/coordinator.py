@@ -98,6 +98,22 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._is_virtual = False
 
     # ---------------------------
+    #   _query_collection
+    # ---------------------------
+    async def _query_collection(self, method: str, **kwargs) -> dict | None:
+        """Fetch a keyed collection and rebuild it from scratch.
+
+        Returns None when the query failed, so that the caller keeps the data
+        it already has instead of dropping every object. An empty result is a
+        real answer and does clear the collection.
+        """
+        source = await self.api.query(method)
+        if source is None:
+            return None
+
+        return parse_api(data={}, source=source, **kwargs)
+
+    # ---------------------------
     #   async_close
     # ---------------------------
     async def async_close(self) -> None:
@@ -244,9 +260,8 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             self.ds["system_info"]["uptimeEpoch"] = utc_from_timestamp(uptime_tm)
 
-        self.ds["interface"] = parse_api(
-            data=self.ds["interface"],
-            source=await self.api.query("interface.query"),
+        interface = await self._query_collection(
+            "interface.query",
             key="id",
             vals=[
                 {"name": "id", "default": "unknown"},
@@ -279,6 +294,10 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 {"name": "tx", "default": 0},
             ],
         )
+        if interface is None:
+            return
+
+        self.ds["interface"] = interface
 
     # ---------------------------
     #   get_updatecheck
@@ -533,9 +552,8 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ---------------------------
     async def get_service(self) -> None:
         """Get service info from TrueNAS."""
-        self.ds["service"] = parse_api(
-            data=self.ds["service"],
-            source=await self.api.query("service.query"),
+        service = await self._query_collection(
+            "service.query",
             key="id",
             vals=[
                 {"name": "id", "default": 0},
@@ -547,6 +565,10 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 {"name": "running", "type": "bool", "default": False},
             ],
         )
+        if service is None:
+            return
+
+        self.ds["service"] = service
 
         for uid, vals in self.ds["service"].items():
             self.ds["service"][uid]["running"] = vals["state"] == "RUNNING"
@@ -556,9 +578,15 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ---------------------------
     async def get_pool(self) -> None:
         """Get pools from TrueNAS."""
+        pools = await self.api.query("pool.query")
+        boot = await self.api.query("boot.get_state")
+        if pools is None or boot is None:
+            # Rebuilding from half the sources would drop the other half.
+            return
+
         self.ds["pool"] = parse_api(
-            data=self.ds["pool"],
-            source=await self.api.query("pool.query"),
+            data={},
+            source=pools,
             key="guid",
             vals=[
                 {"name": "guid", "default": 0},
@@ -607,7 +635,7 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         self.ds["pool"] = parse_api(
             data=self.ds["pool"],
-            source=await self.api.query("boot.get_state"),
+            source=boot,
             key="name",
             vals=[
                 {"name": "guid", "default": "boot-pool"},
@@ -713,9 +741,8 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ---------------------------
     async def get_dataset(self) -> None:
         """Get datasets from TrueNAS."""
-        self.ds["dataset"] = parse_api(
-            data={},
-            source=await self.api.query("pool.dataset.query"),
+        dataset = await self._query_collection(
+            "pool.dataset.query",
             key="id",
             vals=[
                 {"name": "id", "default": "unknown"},
@@ -777,9 +804,10 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 {"name": "available", "source": "available/parsed", "default": 0},
             ],
         )
-
-        if len(self.ds["dataset"]) == 0:
+        if dataset is None:
             return
+
+        self.ds["dataset"] = dataset
 
         # entities_to_be_removed = []
         # if not self.datasets_hass_device_id:
@@ -820,9 +848,8 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ---------------------------
     async def get_disk(self) -> None:
         """Get disks from TrueNAS."""
-        self.ds["disk"] = parse_api(
-            data=self.ds["disk"],
-            source=await self.api.query("disk.query"),
+        disk = await self._query_collection(
+            "disk.query",
             key="identifier",
             vals=[
                 {"name": "name", "default": "unknown"},
@@ -844,6 +871,10 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 {"name": "temperature", "default": 0},
             ],
         )
+        if disk is None:
+            return
+
+        self.ds["disk"] = disk
 
         # Get disk temperatures
         temps = await self.api.query(
@@ -863,9 +894,8 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ---------------------------
     async def get_vm(self) -> None:
         """Get VMs from TrueNAS."""
-        self.ds["vm"] = parse_api(
-            data=self.ds["vm"],
-            source=await self.api.query("virt.instance.query"),
+        vm = await self._query_collection(
+            "virt.instance.query",
             key="id",
             vals=[
                 {"name": "id", "default": 0},
@@ -881,6 +911,10 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 {"name": "running", "type": "bool", "default": False},
             ],
         )
+        if vm is None:
+            return
+
+        self.ds["vm"] = vm
 
         for uid, vals in self.ds["vm"].items():
             self.ds["vm"][uid]["memory"] = round(vals["memory"] / 1024 / 1024 / 1024)
@@ -891,9 +925,8 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ---------------------------
     async def get_cloudsync(self) -> None:
         """Get cloudsync from TrueNAS."""
-        self.ds["cloudsync"] = parse_api(
-            data=self.ds["cloudsync"],
-            source=await self.api.query("cloudsync.query"),
+        cloudsync = await self._query_collection(
+            "cloudsync.query",
             key="id",
             vals=[
                 {"name": "id", "default": "unknown"},
@@ -924,15 +957,18 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 },
             ],
         )
+        if cloudsync is None:
+            return
+
+        self.ds["cloudsync"] = cloudsync
 
     # ---------------------------
     #   get_replication
     # ---------------------------
     async def get_replication(self) -> None:
         """Get replication from TrueNAS."""
-        self.ds["replication"] = parse_api(
-            data=self.ds["replication"],
-            source=await self.api.query("replication.query"),
+        replication = await self._query_collection(
+            "replication.query",
             key="id",
             vals=[
                 {"name": "id", "default": 0},
@@ -966,15 +1002,18 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 },
             ],
         )
+        if replication is None:
+            return
+
+        self.ds["replication"] = replication
 
     # ---------------------------
     #   get_snapshottask
     # ---------------------------
     async def get_snapshottask(self) -> None:
         """Get replication from TrueNAS."""
-        self.ds["snapshottask"] = parse_api(
-            data=self.ds["snapshottask"],
-            source=await self.api.query("pool.snapshottask.query"),
+        snapshottask = await self._query_collection(
+            "pool.snapshottask.query",
             key="id",
             vals=[
                 {"name": "id", "default": 0},
@@ -995,15 +1034,18 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 },
             ],
         )
+        if snapshottask is None:
+            return
+
+        self.ds["snapshottask"] = snapshottask
 
     # ---------------------------
     #   get_app
     # ---------------------------
     async def get_app(self) -> None:
         """Get Apps from TrueNAS."""
-        self.ds["app"] = parse_api(
-            data=self.ds["app"],
-            source=await self.api.query("app.query"),
+        app = await self._query_collection(
+            "app.query",
             key="id",
             vals=[
                 {"name": "id", "default": 0},
@@ -1034,6 +1076,10 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 {"name": "running", "type": "bool", "default": False},
             ],
         )
+        if app is None:
+            return
+
+        self.ds["app"] = app
 
         for uid, vals in self.ds["app"].items():
             self.ds["app"][uid]["running"] = vals["state"] == "RUNNING"

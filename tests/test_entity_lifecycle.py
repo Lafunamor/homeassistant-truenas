@@ -82,7 +82,6 @@ async def test_removed_object_goes_unavailable(hass, entry, responses) -> None:
     """An app removed on the NAS stops reporting a stale state."""
     assert hass.states.get("binary_sensor.truenas_apps_plex").state == "on"
 
-    entry.runtime_data.ds["app"] = {}
     responses["app.query"] = []
     await entry.runtime_data.async_refresh()
     await hass.async_block_till_done()
@@ -99,3 +98,24 @@ async def test_entity_is_not_added_twice(hass, entry, responses) -> None:
     await hass.async_block_till_done()
 
     assert len(hass.states.async_entity_ids()) == before
+
+
+async def test_stale_objects_are_dropped(hass, entry, responses) -> None:
+    """An object removed on the NAS leaves the coordinator data."""
+    assert "plex" in entry.runtime_data.ds["app"]
+
+    responses["app.query"] = []
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+
+    assert entry.runtime_data.ds["app"] == {}
+
+
+async def test_failed_query_keeps_the_objects(hass, entry, responses) -> None:
+    """A failed query must not look like "everything was deleted"."""
+    responses["app.query"] = None
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+
+    assert "plex" in entry.runtime_data.ds["app"]
+    assert hass.states.get("binary_sensor.truenas_apps_plex").state == "on"

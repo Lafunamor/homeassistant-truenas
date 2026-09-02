@@ -1,7 +1,7 @@
 """End to end test of the integration against a canned TrueNAS API."""
 
 from __future__ import annotations
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from homeassistant.const import CONF_API_KEY, CONF_HOST, CONF_NAME, CONF_VERIFY_SSL
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.truenas.const import DOMAIN
@@ -146,7 +146,11 @@ async def test_entities_are_created(hass) -> None:
     api = MagicMock()
     api.connected.return_value = True
     api.error = ""
-    api.query.side_effect = lambda service, params=None: RESPONSES.get(service)
+    api.query = AsyncMock(
+        side_effect=lambda service, params=None: RESPONSES.get(service)
+    )
+    api.connect = AsyncMock(return_value=True)
+    api.disconnect = AsyncMock()
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
