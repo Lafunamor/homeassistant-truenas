@@ -40,14 +40,14 @@ class StubAPI:
         self.disconnected = False
         StubAPI.instances.append(self)
 
-    def connection_test(self):
+    async def connection_test(self):
         """Return the canned connection result."""
         if StubAPI.results_by_scheme is not None:
             return StubAPI.results_by_scheme[self.use_ssl]
 
         return StubAPI.result
 
-    def disconnect(self):
+    async def disconnect(self):
         """Record that the socket was released."""
         self.disconnected = True
 

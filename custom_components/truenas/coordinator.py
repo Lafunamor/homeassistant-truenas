@@ -88,7 +88,7 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
     async def _async_update_data(self):
         """Update TrueNAS data."""
         if not self.api.connected():
-            self.api.connect()
+            await self.api.connect()
 
         jobs = [
             self.get_systeminfo,
@@ -106,11 +106,11 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
 
         for job in jobs:
             if self.api.connected():
-                await self.hass.async_add_executor_job(job)
+                await job()
 
         delta = datetime.now().replace(microsecond=0) - self.last_updatecheck_update
         if self.api.connected() and delta.total_seconds() > 60 * 60 * 12:
-            await self.hass.async_add_executor_job(self.get_updatecheck)
+            await self.get_updatecheck()
             self.last_updatecheck_update = datetime.now().replace(microsecond=0)
 
         if not self.api.connected():
@@ -121,11 +121,11 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     #   get_systeminfo
     # ---------------------------
-    def get_systeminfo(self) -> None:
+    async def get_systeminfo(self) -> None:
         """Get system info from TrueNAS."""
         self.ds["system_info"] = parse_api(
             data=self.ds["system_info"],
-            source=self.api.query("system.info"),
+            source=await self.api.query("system.info"),
             vals=[
                 {"name": "version", "default": "unknown"},
                 {"name": "hostname", "default": "unknown"},
@@ -169,7 +169,7 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
         if self.ds["system_info"]["update_jobid"]:
             self.ds["system_info"] = parse_api(
                 data=self.ds["system_info"],
-                source=self.api.query(
+                source=await self.api.query(
                     "core.get_jobs",
                     params=[[["id", "=", self.ds["system_info"]["update_jobid"]]]],
                 ),
@@ -234,7 +234,7 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
 
         self.ds["interface"] = parse_api(
             data=self.ds["interface"],
-            source=self.api.query("interface.query"),
+            source=await self.api.query("interface.query"),
             key="id",
             vals=[
                 {"name": "id", "default": "unknown"},
@@ -271,10 +271,10 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     #   get_updatecheck
     # ---------------------------
-    def get_updatecheck(self) -> None:
+    async def get_updatecheck(self) -> None:
         self.ds["system_info"] = parse_api(
             data=self.ds["system_info"],
-            source=self.api.query("update.check_available"),
+            source=await self.api.query("update.check_available"),
             vals=[
                 {
                     "name": "update_status",
@@ -305,7 +305,7 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     #   get_systemstats
     # ---------------------------
-    def get_systemstats(self) -> None:
+    async def get_systemstats(self) -> None:
         """Get system statistics."""
         report_epoch = int(datetime.now().replace(microsecond=0).timestamp())
         tmp_graphs = [
@@ -340,7 +340,7 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
 
         reporting_path = "reporting.netdata_get_data"
 
-        tmp_graph = self.api.query(
+        tmp_graph = await self.api.query(
             reporting_path,
             params=tmp_params,
         )
@@ -357,7 +357,7 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
                         },
                     }
 
-                    tmp2 = self.api.query(
+                    tmp2 = await self.api.query(
                         reporting_path,
                         params=tmp_params2,
                     )
@@ -369,7 +369,7 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
                     self.host,
                     self._systemstats_errored,
                 )
-                self.get_systemstats()
+                await self.get_systemstats()
 
             return
 
@@ -493,11 +493,11 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     #   get_service
     # ---------------------------
-    def get_service(self) -> None:
+    async def get_service(self) -> None:
         """Get service info from TrueNAS."""
         self.ds["service"] = parse_api(
             data=self.ds["service"],
-            source=self.api.query("service.query"),
+            source=await self.api.query("service.query"),
             key="id",
             vals=[
                 {"name": "id", "default": 0},
@@ -516,11 +516,11 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     #   get_pool
     # ---------------------------
-    def get_pool(self) -> None:
+    async def get_pool(self) -> None:
         """Get pools from TrueNAS."""
         self.ds["pool"] = parse_api(
             data=self.ds["pool"],
-            source=self.api.query("pool.query"),
+            source=await self.api.query("pool.query"),
             key="guid",
             vals=[
                 {"name": "guid", "default": 0},
@@ -569,7 +569,7 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
 
         self.ds["pool"] = parse_api(
             data=self.ds["pool"],
-            source=self.api.query("boot.get_state"),
+            source=await self.api.query("boot.get_state"),
             key="name",
             vals=[
                 {"name": "guid", "default": "boot-pool"},
@@ -673,11 +673,11 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     #   get_dataset
     # ---------------------------
-    def get_dataset(self) -> None:
+    async def get_dataset(self) -> None:
         """Get datasets from TrueNAS."""
         self.ds["dataset"] = parse_api(
             data={},
-            source=self.api.query("pool.dataset.query"),
+            source=await self.api.query("pool.dataset.query"),
             key="id",
             vals=[
                 {"name": "id", "default": "unknown"},
@@ -780,11 +780,11 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     #   get_disk
     # ---------------------------
-    def get_disk(self) -> None:
+    async def get_disk(self) -> None:
         """Get disks from TrueNAS."""
         self.ds["disk"] = parse_api(
             data=self.ds["disk"],
-            source=self.api.query("disk.query"),
+            source=await self.api.query("disk.query"),
             key="identifier",
             vals=[
                 {"name": "name", "default": "unknown"},
@@ -808,7 +808,7 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
         )
 
         # Get disk temperatures
-        temps = self.api.query(
+        temps = await self.api.query(
             "disk.temperatures",
             params={},
         )
@@ -823,11 +823,11 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     #   get_vm
     # ---------------------------
-    def get_vm(self) -> None:
+    async def get_vm(self) -> None:
         """Get VMs from TrueNAS."""
         self.ds["vm"] = parse_api(
             data=self.ds["vm"],
-            source=self.api.query("virt.instance.query"),
+            source=await self.api.query("virt.instance.query"),
             key="id",
             vals=[
                 {"name": "id", "default": 0},
@@ -851,11 +851,11 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     #   get_cloudsync
     # ---------------------------
-    def get_cloudsync(self) -> None:
+    async def get_cloudsync(self) -> None:
         """Get cloudsync from TrueNAS."""
         self.ds["cloudsync"] = parse_api(
             data=self.ds["cloudsync"],
-            source=self.api.query("cloudsync.query"),
+            source=await self.api.query("cloudsync.query"),
             key="id",
             vals=[
                 {"name": "id", "default": "unknown"},
@@ -890,11 +890,11 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     #   get_replication
     # ---------------------------
-    def get_replication(self) -> None:
+    async def get_replication(self) -> None:
         """Get replication from TrueNAS."""
         self.ds["replication"] = parse_api(
             data=self.ds["replication"],
-            source=self.api.query("replication.query"),
+            source=await self.api.query("replication.query"),
             key="id",
             vals=[
                 {"name": "id", "default": 0},
@@ -932,11 +932,11 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     #   get_snapshottask
     # ---------------------------
-    def get_snapshottask(self) -> None:
+    async def get_snapshottask(self) -> None:
         """Get replication from TrueNAS."""
         self.ds["snapshottask"] = parse_api(
             data=self.ds["snapshottask"],
-            source=self.api.query("pool.snapshottask.query"),
+            source=await self.api.query("pool.snapshottask.query"),
             key="id",
             vals=[
                 {"name": "id", "default": 0},
@@ -961,11 +961,11 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     #   get_app
     # ---------------------------
-    def get_app(self) -> None:
+    async def get_app(self) -> None:
         """Get Apps from TrueNAS."""
         self.ds["app"] = parse_api(
             data=self.ds["app"],
-            source=self.api.query("app.query"),
+            source=await self.api.query("app.query"),
             key="id",
             vals=[
                 {"name": "id", "default": 0},

@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import ssl
-from inspect import signature
 from itertools import count
 from logging import getLogger
-from threading import RLock
 from typing import Any
 from urllib.parse import urlsplit
 
-from websockets.sync.client import ClientConnection, connect
+from homeassistant.util.ssl import client_context, client_context_no_verify
+from websockets.asyncio.client import ClientConnection
+from websockets.asyncio.client import connect as ws_connect
 
 _LOGGER = getLogger(__name__)
 
@@ -28,12 +29,26 @@ SCHEME_MAP = {
     "wss": "wss",
 }
 
-# websockets 17.1 deprecated calling connect() outside of a context manager.
-# This integration keeps a single long lived connection open, so opt into the
-# documented legacy behaviour when the running version supports the flag.
-_CONNECT_KWARGS: dict[str, Any] = {}
-if "legacy" in signature(connect).parameters:
-    _CONNECT_KWARGS["legacy"] = True
+# Transport level failures that mean "nothing is answering here", after which
+# it is safe to try the other scheme. TLS failures are deliberately absent: a
+# certificate problem must not silently downgrade the connection to plaintext.
+RETRYABLE_SCHEME_ERRORS = frozenset(
+    {
+        "cannot_connect",
+        "connection_refused",
+        "handshake_timeout",
+        "http_used",
+        "websocket_not_supported",
+    }
+)
+
+
+# ---------------------------
+#   has_scheme
+# ---------------------------
+def has_scheme(host: str) -> bool:
+    """Return True when the user pinned a scheme in the host field."""
+    return "://" in host.strip()
 
 
 # ---------------------------
@@ -65,28 +80,6 @@ def build_api_url(host: str, use_ssl: bool = True) -> str:
     return f"{scheme}://{split.netloc}{path}"
 
 
-# Transport level failures that mean "nothing is answering here", after which
-# it is safe to try the other scheme. TLS failures are deliberately absent: a
-# certificate problem must not silently downgrade the connection to plaintext.
-RETRYABLE_SCHEME_ERRORS = frozenset(
-    {
-        "cannot_connect",
-        "connection_refused",
-        "handshake_timeout",
-        "http_used",
-        "websocket_not_supported",
-    }
-)
-
-
-# ---------------------------
-#   has_scheme
-# ---------------------------
-def has_scheme(host: str) -> bool:
-    """Return True when the user pinned a scheme in the host field."""
-    return "://" in host.strip()
-
-
 # ---------------------------
 #   error_code
 # ---------------------------
@@ -110,6 +103,12 @@ def error_code(exc: Exception) -> str:
         if needle in text:
             return code
 
+    if isinstance(exc, TimeoutError):
+        return "handshake_timeout"
+
+    if isinstance(exc, ConnectionRefusedError):
+        return "connection_refused"
+
     return "cannot_connect"
 
 
@@ -131,19 +130,10 @@ class TrueNASAPI(object):
         self._api_key = api_key
         self._ssl_verify = verify_ssl
         self._url = build_api_url(host, use_ssl)
+        self._use_tls = self._url.startswith("wss://")
         self._ssl_context: ssl.SSLContext | None = None
-        if self._url.startswith("wss://"):
-            self._ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-            self._ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
-            if verify_ssl:
-                self._ssl_context.check_hostname = True
-                self._ssl_context.verify_mode = ssl.CERT_REQUIRED
-            else:
-                self._ssl_context.check_hostname = False
-                self._ssl_context.verify_mode = ssl.CERT_NONE
 
-        # Reentrant so that query() can reconnect while holding the lock.
-        self.lock = RLock()
+        self.lock = asyncio.Lock()
         self._ws: ClientConnection | None = None
         self._message_id = count(1)
         self._connected = False
@@ -151,68 +141,100 @@ class TrueNASAPI(object):
         self._error_logged = False
 
     # ---------------------------
+    #   _async_ssl_context
+    # ---------------------------
+    async def _async_ssl_context(self) -> ssl.SSLContext | None:
+        """Return the TLS context, None for a plain websocket.
+
+        Home Assistant caches these contexts, but building the first one reads
+        the CA bundle from disk, so it is created off the event loop.
+        """
+        if not self._use_tls:
+            return None
+
+        if self._ssl_context is None:
+            factory = client_context if self._ssl_verify else client_context_no_verify
+            loop = asyncio.get_running_loop()
+            self._ssl_context = await loop.run_in_executor(None, factory)
+
+        return self._ssl_context
+
+    # ---------------------------
     #   connect
     # ---------------------------
-    def connect(self) -> bool:
+    async def connect(self) -> bool:
         """Return connected boolean."""
-        with self.lock:
-            self._close()
-            self._error = ""
-            try:
-                self._ws = connect(
-                    self._url,
-                    ssl=self._ssl_context,
-                    max_size=MAX_MESSAGE_SIZE,
-                    open_timeout=DEFAULT_OPEN_TIMEOUT,
-                    ping_interval=20,
-                    ping_timeout=20,
-                    close_timeout=5,
-                    # Never route a local NAS through a system wide proxy.
-                    proxy=None,
-                    **_CONNECT_KWARGS,
-                )
-            except Exception as e:
-                self._error = error_code(e)
-                if not self._error_logged:
-                    _LOGGER.error("TrueNAS %s failed to connect (%s)", self._host, e)
+        async with self.lock:
+            return await self._connect()
 
-                self._error_logged = True
-                return False
+    # ---------------------------
+    #   _connect
+    # ---------------------------
+    async def _connect(self) -> bool:
+        """Open the connection and log in. The caller must hold the lock."""
+        await self._close()
+        self._error = ""
+        try:
+            self._ws = await ws_connect(
+                self._url,
+                ssl=await self._async_ssl_context(),
+                max_size=MAX_MESSAGE_SIZE,
+                open_timeout=DEFAULT_OPEN_TIMEOUT,
+                ping_interval=20,
+                ping_timeout=20,
+                close_timeout=5,
+                # Never route a local NAS through a system wide proxy.
+                proxy=None,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            self._error = error_code(e)
+            if not self._error_logged:
+                _LOGGER.error("TrueNAS %s failed to connect (%s)", self._host, e)
 
-            try:
-                result = self._request("auth.login_with_api_key", [self._api_key])
-                self._connected = result is True
-                if not self._connected:
-                    self._error = self._error or "invalid_key"
-                    self._close()
-            except Exception as e:
-                self._error = error_code(e)
-                if not self._error_logged:
-                    _LOGGER.error("TrueNAS %s failed to login (%s)", self._host, e)
+            self._error_logged = True
+            return False
 
-                self._error_logged = True
-                self._close()
-                return False
+        try:
+            async with asyncio.timeout(DEFAULT_QUERY_TIMEOUT):
+                result = await self._request("auth.login_with_api_key", [self._api_key])
 
-            if self._connected:
-                self._error_logged = False
+            self._connected = result is True
+            if not self._connected:
+                self._error = self._error or "invalid_key"
+                await self._close()
+        except asyncio.CancelledError:
+            await self._close()
+            raise
+        except Exception as e:
+            self._error = error_code(e)
+            if not self._error_logged:
+                _LOGGER.error("TrueNAS %s failed to login (%s)", self._host, e)
 
-            return self._connected
+            self._error_logged = True
+            await self._close()
+            return False
+
+        if self._connected:
+            self._error_logged = False
+
+        return self._connected
 
     # ---------------------------
     #   disconnect
     # ---------------------------
-    def disconnect(self) -> bool:
+    async def disconnect(self) -> bool:
         """Return connected boolean."""
-        with self.lock:
-            self._close()
+        async with self.lock:
+            await self._close()
 
         return self._connected
 
     # ---------------------------
     #   _close
     # ---------------------------
-    def _close(self) -> None:
+    async def _close(self) -> None:
         """Close the websocket and reset the connection state."""
         ws, self._ws = self._ws, None
         self._connected = False
@@ -220,18 +242,17 @@ class TrueNASAPI(object):
             return
 
         try:
-            ws.close()
+            await ws.close()
         except Exception as e:
             _LOGGER.debug("TrueNAS %s error while closing (%s)", self._host, e)
 
     # ---------------------------
     #   reconnect
     # ---------------------------
-    def reconnect(self) -> bool:
+    async def reconnect(self) -> bool:
         """Return connected boolean."""
-        with self.lock:
-            self.disconnect()
-            return self.connect()
+        async with self.lock:
+            return await self._connect()
 
     # ---------------------------
     #   connected
@@ -243,21 +264,21 @@ class TrueNASAPI(object):
     # ---------------------------
     #   connection_test
     # ---------------------------
-    def connection_test(self) -> tuple:
+    async def connection_test(self) -> tuple:
         """Test connection."""
-        self.connect()
+        await self.connect()
         if self.connected():
-            self.query("system.info")
+            await self.query("system.info")
 
         return self._connected, self._error
 
     # ---------------------------
     #   query
     # ---------------------------
-    def query(self, service: str, params: Any = None) -> Any:
+    async def query(self, service: str, params: Any = None) -> Any:
         """Retrieve data from TrueNAS."""
-        with self.lock:
-            if not self._connected and not self.connect():
+        async with self.lock:
+            if not self._connected and not await self._connect():
                 return None
 
             self._error = ""
@@ -270,7 +291,11 @@ class TrueNASAPI(object):
 
             _LOGGER.debug("TrueNAS %s query: %s, %s", self._host, service, call_params)
             try:
-                data = self._request(service, call_params)
+                async with asyncio.timeout(DEFAULT_QUERY_TIMEOUT):
+                    data = await self._request(service, call_params)
+            except asyncio.CancelledError:
+                await self._close()
+                raise
             except Exception as e:
                 _LOGGER.warning(
                     'TrueNAS %s unable to fetch data "%s" (%s)',
@@ -279,7 +304,7 @@ class TrueNASAPI(object):
                     e,
                 )
                 self._error = error_code(e)
-                self._close()
+                await self._close()
                 return None
 
             _LOGGER.debug(
@@ -290,18 +315,18 @@ class TrueNASAPI(object):
     # ---------------------------
     #   _request
     # ---------------------------
-    def _request(self, method: str, params: list) -> Any:
+    async def _request(self, method: str, params: list) -> Any:
         """Send a JSON-RPC request and return the matching result.
 
-        The caller must hold the lock. Raises on transport errors so that
-        query() can drop the connection; JSON-RPC level errors are logged and
+        The caller must hold the lock. Raises on transport errors so that the
+        caller can drop the connection; JSON-RPC level errors are logged and
         reported as None.
         """
         if self._ws is None:
             raise ConnectionError("not connected")
 
         message_id = next(self._message_id)
-        self._ws.send(
+        await self._ws.send(
             json.dumps(
                 {
                     "jsonrpc": "2.0",
@@ -312,7 +337,7 @@ class TrueNASAPI(object):
             )
         )
 
-        data = self._receive(message_id)
+        data = await self._receive(message_id)
         if data is None:
             return None
 
@@ -336,10 +361,11 @@ class TrueNASAPI(object):
     # ---------------------------
     #   _receive
     # ---------------------------
-    def _receive(self, message_id: int) -> dict | None:
+    async def _receive(self, message_id: int) -> dict | None:
         """Read messages until the response for message_id arrives."""
+        assert self._ws is not None
         while True:
-            message = self._ws.recv(timeout=DEFAULT_QUERY_TIMEOUT)
+            message = await self._ws.recv()
             if isinstance(message, bytes):
                 message = message.decode("utf-8", "replace")
 

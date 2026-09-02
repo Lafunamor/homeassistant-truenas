@@ -140,8 +140,7 @@ class TrueNASConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> str | None:
         """Return an error code when one endpoint cannot be reached."""
         try:
-            api = await self.hass.async_add_executor_job(
-                TrueNASAPI,
+            api = TrueNASAPI(
                 truenas_config[CONF_HOST],
                 truenas_config[CONF_API_KEY],
                 truenas_config[CONF_VERIFY_SSL],
@@ -152,11 +151,9 @@ class TrueNASConfigFlow(ConfigFlow, domain=DOMAIN):
             return "invalid_hostname"
 
         try:
-            conn, errorcode = await self.hass.async_add_executor_job(
-                api.connection_test
-            )
+            conn, errorcode = await api.connection_test()
         finally:
-            await self.hass.async_add_executor_job(api.disconnect)
+            await api.disconnect()
 
         if conn:
             _LOGGER.info("TrueNAS reachable at %s", api.url)

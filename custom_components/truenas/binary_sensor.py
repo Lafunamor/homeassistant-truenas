@@ -66,13 +66,12 @@ class TrueNASVMBinarySensor(TrueNASBinarySensor):
 
     async def start(self, overcommit: bool = False):
         """Start a VM."""  # virt.instance.start
-        tmp_vm = await self.hass.async_add_executor_job(
-            self.coordinator.api.query,
+        tmp_vm = await self.coordinator.api.query(
             "virt.instance.get_instance",
             [self._data["id"]],
         )
 
-        if "status" not in tmp_vm:
+        if not isinstance(tmp_vm, dict) or "status" not in tmp_vm:
             _LOGGER.error("VM %s (%s) invalid", self._data["name"], self._data["id"])
             return
 
@@ -82,21 +81,19 @@ class TrueNASVMBinarySensor(TrueNASBinarySensor):
             )
             return
 
-        await self.hass.async_add_executor_job(
-            self.coordinator.api.query,
+        await self.coordinator.api.query(
             "virt.instance.start",
             [self._data["id"]],
         )
 
     async def stop(self):
         """Stop a VM."""
-        tmp_vm = await self.hass.async_add_executor_job(
-            self.coordinator.api.query,
+        tmp_vm = await self.coordinator.api.query(
             "virt.instance.get_instance",
             [self._data["id"]],
         )
 
-        if "status" not in tmp_vm:
+        if not isinstance(tmp_vm, dict) or "status" not in tmp_vm:
             _LOGGER.error("VM %s (%s) invalid", self._data["name"], self._data["id"])
             return
 
@@ -106,8 +103,7 @@ class TrueNASVMBinarySensor(TrueNASBinarySensor):
             )
             return
 
-        await self.hass.async_add_executor_job(
-            self.coordinator.api.query,
+        await self.coordinator.api.query(
             "virt.instance.stop",
             [self._data["id"], {"timeout": 0, "force": True}],
         )
@@ -121,13 +117,12 @@ class TrueNASServiceBinarySensor(TrueNASBinarySensor):
 
     async def start(self):
         """Start a Service."""
-        tmp_service = await self.hass.async_add_executor_job(
-            self.coordinator.api.query,
+        tmp_service = await self.coordinator.api.query(
             "service.get_instance",
             [self._data["id"]],
         )
 
-        if "state" not in tmp_service:
+        if not isinstance(tmp_service, dict) or "state" not in tmp_service:
             _LOGGER.error(
                 "Service %s (%s) invalid", self._data["service"], self._data["id"]
             )
@@ -141,8 +136,7 @@ class TrueNASServiceBinarySensor(TrueNASBinarySensor):
             )
             return
 
-        await self.hass.async_add_executor_job(
-            self.coordinator.api.query,
+        await self.coordinator.api.query(
             "service.start",
             [self._data["service"]],
         )
@@ -151,13 +145,12 @@ class TrueNASServiceBinarySensor(TrueNASBinarySensor):
 
     async def stop(self):
         """Stop a Service."""
-        tmp_service = await self.hass.async_add_executor_job(
-            self.coordinator.api.query,
+        tmp_service = await self.coordinator.api.query(
             "service.get_instance",
             [self._data["id"]],
         )
 
-        if "state" not in tmp_service:
+        if not isinstance(tmp_service, dict) or "state" not in tmp_service:
             _LOGGER.error(
                 "Service %s (%s) invalid", self._data["service"], self._data["id"]
             )
@@ -171,8 +164,7 @@ class TrueNASServiceBinarySensor(TrueNASBinarySensor):
             )
             return
 
-        await self.hass.async_add_executor_job(
-            self.coordinator.api.query,
+        await self.coordinator.api.query(
             "service.stop",
             [self._data["service"]],
         )
@@ -180,13 +172,12 @@ class TrueNASServiceBinarySensor(TrueNASBinarySensor):
 
     async def restart(self):
         """Restart a Service."""
-        tmp_service = await self.hass.async_add_executor_job(
-            self.coordinator.api.query,
+        tmp_service = await self.coordinator.api.query(
             "service.get_instance",
             [self._data["id"]],
         )
 
-        if "state" not in tmp_service:
+        if not isinstance(tmp_service, dict) or "state" not in tmp_service:
             _LOGGER.error(
                 "Service %s (%s) invalid", self._data["service"], self._data["id"]
             )
@@ -200,8 +191,7 @@ class TrueNASServiceBinarySensor(TrueNASBinarySensor):
             )
             return
 
-        await self.hass.async_add_executor_job(
-            self.coordinator.api.query,
+        await self.coordinator.api.query(
             "service.restart",
             [self._data["service"]],
         )
@@ -210,13 +200,12 @@ class TrueNASServiceBinarySensor(TrueNASBinarySensor):
 
     async def reload(self):
         """Reload a Service."""
-        tmp_service = await self.hass.async_add_executor_job(
-            self.coordinator.api.query,
+        tmp_service = await self.coordinator.api.query(
             "service.get_instance",
             [self._data["id"]],
         )
 
-        if "state" not in tmp_service:
+        if not isinstance(tmp_service, dict) or "state" not in tmp_service:
             _LOGGER.error(
                 "Service %s (%s) invalid", self._data["service"], self._data["id"]
             )
@@ -230,8 +219,7 @@ class TrueNASServiceBinarySensor(TrueNASBinarySensor):
             )
             return
 
-        await self.hass.async_add_executor_job(
-            self.coordinator.api.query,
+        await self.coordinator.api.query(
             "service.reload",
             [self._data["service"]],
         )
@@ -247,13 +235,12 @@ class TrueNASAppBinarySensor(TrueNASBinarySensor):
 
     async def start(self):
         """Start an App."""
-        tmp_app = await self.hass.async_add_executor_job(
-            self.coordinator.api.query,
+        tmp_app = await self.coordinator.api.query(
             "app.get_instance",
             [self._data["id"]],
         )
 
-        if tmp_app is None or "state" not in tmp_app:
+        if not isinstance(tmp_app, dict) or "state" not in tmp_app:
             _LOGGER.error("App %s (%s) invalid", self._data["name"], self._data["id"])
             return
 
@@ -263,21 +250,19 @@ class TrueNASAppBinarySensor(TrueNASBinarySensor):
             )
             return
 
-        await self.hass.async_add_executor_job(
-            self.coordinator.api.query,
+        await self.coordinator.api.query(
             "app.start",
             [self._data["id"]],
         )
 
     async def stop(self):
         """Stop an App."""
-        tmp_app = await self.hass.async_add_executor_job(
-            self.coordinator.api.query,
+        tmp_app = await self.coordinator.api.query(
             "app.get_instance",
             [self._data["id"]],
         )
 
-        if tmp_app is None or "state" not in tmp_app:
+        if not isinstance(tmp_app, dict) or "state" not in tmp_app:
             _LOGGER.error("App %s (%s) invalid", self._data["name"], self._data["id"])
             return
 
@@ -287,8 +272,7 @@ class TrueNASAppBinarySensor(TrueNASBinarySensor):
             )
             return
 
-        await self.hass.async_add_executor_job(
-            self.coordinator.api.query,
+        await self.coordinator.api.query(
             "app.stop",
             [self._data["id"]],
         )
