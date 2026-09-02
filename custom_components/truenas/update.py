@@ -85,7 +85,7 @@ class TrueNASUpdate(TrueNASEntity, UpdateEntity):
     async def async_install(self, version: str, backup: bool, **kwargs: Any) -> None:
         """Install an update."""
         self._data["update_jobid"] = await self.coordinator.api.query(
-            "update.update",
+            self.coordinator.system_update_method(),
             {"reboot": True},
         )
         await self.coordinator.async_refresh()

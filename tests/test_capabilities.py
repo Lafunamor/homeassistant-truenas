@@ -83,3 +83,85 @@ async def test_supported_calls_still_run(coordinator) -> None:
     await coordinator.get_app()
 
     coordinator.api.query.assert_called_once_with("app.query")
+
+
+# ---------------------------
+#   system update API
+# ---------------------------
+UPDATE_STATUS_AVAILABLE = {
+    "code": "NORMAL",
+    "status": {
+        "current_version": {"train": "25.10", "profile": "GENERAL"},
+        "new_version": {"version": "TrueNAS-25.10.6", "manifest": {}},
+    },
+    "error": None,
+    "update_download_progress": None,
+}
+UPDATE_STATUS_UP_TO_DATE = {
+    "code": "NORMAL",
+    "status": {
+        "current_version": {"train": "25.10", "profile": "GENERAL"},
+        "new_version": None,
+    },
+    "error": None,
+    "update_download_progress": None,
+}
+
+
+async def test_update_status_reports_available_update(coordinator) -> None:
+    """update.status signals an update through status.new_version."""
+    coordinator._methods = {"update.status"}
+    coordinator.ds["system_info"]["version"] = "TrueNAS-25.10.5"
+    coordinator.api.query.return_value = UPDATE_STATUS_AVAILABLE
+
+    await coordinator.get_updatecheck()
+
+    coordinator.api.query.assert_called_once_with("update.status")
+    assert coordinator.ds["system_info"]["update_available"] is True
+    assert coordinator.ds["system_info"]["update_version"] == "TrueNAS-25.10.6"
+
+
+async def test_update_status_reports_up_to_date(coordinator) -> None:
+    """No new_version means the running version is the latest."""
+    coordinator._methods = {"update.status"}
+    coordinator.ds["system_info"]["version"] = "TrueNAS-25.10.5"
+    coordinator.api.query.return_value = UPDATE_STATUS_UP_TO_DATE
+
+    await coordinator.get_updatecheck()
+
+    assert coordinator.ds["system_info"]["update_available"] is False
+    assert coordinator.ds["system_info"]["update_version"] == "TrueNAS-25.10.5"
+
+
+async def test_update_falls_back_to_check_available(coordinator) -> None:
+    """An older TrueNAS keeps using update.check_available."""
+    coordinator._methods = {"update.check_available"}
+    coordinator.ds["system_info"]["version"] = "TrueNAS-24.10.0"
+    coordinator.api.query.return_value = {
+        "status": "AVAILABLE",
+        "version": "TrueNAS-24.10.1",
+    }
+
+    await coordinator.get_updatecheck()
+
+    coordinator.api.query.assert_called_once_with("update.check_available")
+    assert coordinator.ds["system_info"]["update_available"] is True
+    assert coordinator.ds["system_info"]["update_version"] == "TrueNAS-24.10.1"
+
+
+async def test_update_check_skipped_when_unsupported(coordinator) -> None:
+    """A NAS with neither method is not polled for updates."""
+    coordinator._methods = {"system.info"}
+
+    await coordinator.get_updatecheck()
+
+    coordinator.api.query.assert_not_called()
+
+
+async def test_system_update_method(coordinator) -> None:
+    """Installing an update uses update.run where it exists."""
+    coordinator._methods = {"update.run"}
+    assert coordinator.system_update_method() == "update.run"
+
+    coordinator._methods = {"update.update"}
+    assert coordinator.system_update_method() == "update.update"

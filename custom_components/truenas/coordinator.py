@@ -24,7 +24,15 @@ from .api import TrueNASAPI
 from homeassistant.util.dt import utc_from_timestamp
 
 from .apiparser import parse_api
-from .const import DEFAULT_SSL, DOMAIN, SYSTEMSTATS_RETRY_AFTER
+from .const import (
+    DEFAULT_SSL,
+    DOMAIN,
+    LEGACY_UPDATE_CHECK,
+    LEGACY_UPDATE_RUN,
+    SYSTEMSTATS_RETRY_AFTER,
+    UPDATE_RUN,
+    UPDATE_STATUS,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -338,9 +346,58 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     #   get_updatecheck
     # ---------------------------
     async def get_updatecheck(self) -> None:
+        """Get the system update status from TrueNAS."""
+        if self.supports(UPDATE_STATUS):
+            await self._get_update_status()
+        elif self.supports(LEGACY_UPDATE_CHECK):
+            await self._get_update_check_available()
+        else:
+            return
+
+        if not self.api.connected():
+            return
+
+        if self.ds["system_info"]["update_version"] == "unknown":
+            self.ds["system_info"]["update_version"] = self.ds["system_info"]["version"]
+
+    # ---------------------------
+    #   _get_update_status
+    # ---------------------------
+    async def _get_update_status(self) -> None:
+        """Read update.status, the update API of TrueNAS 25.04 and later."""
         self.ds["system_info"] = parse_api(
             data=self.ds["system_info"],
-            source=await self.api.query("update.check_available"),
+            source=await self.api.query(UPDATE_STATUS),
+            vals=[
+                {
+                    "name": "update_status",
+                    "source": "code",
+                    "default": "unknown",
+                },
+                {
+                    "name": "update_version",
+                    "source": "status/new_version/version",
+                    "default": "unknown",
+                },
+            ],
+        )
+        if not self.api.connected():
+            return
+
+        # update.status reports NORMAL/ERROR; an available update is signalled
+        # by status.new_version being populated.
+        self.ds["system_info"]["update_available"] = (
+            self.ds["system_info"]["update_version"] != "unknown"
+        )
+
+    # ---------------------------
+    #   _get_update_check_available
+    # ---------------------------
+    async def _get_update_check_available(self) -> None:
+        """Read update.check_available, removed in TrueNAS 25.04."""
+        self.ds["system_info"] = parse_api(
+            data=self.ds["system_info"],
+            source=await self.api.query(LEGACY_UPDATE_CHECK),
             vals=[
                 {
                     "name": "update_status",
@@ -354,19 +411,23 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 },
             ],
         )
-
         if not self.api.connected():
             return
-
-        if (
-            self.ds["system_info"]["update_version"] == "unknown"
-            and self.ds["system_info"]["version"]
-        ):
-            self.ds["system_info"]["update_version"] = self.ds["system_info"]["version"]
 
         self.ds["system_info"]["update_available"] = (
             self.ds["system_info"]["update_status"] == "AVAILABLE"
         )
+
+    # ---------------------------
+    #   system_update_method
+    # ---------------------------
+    def system_update_method(self) -> str:
+        """Return the API method that installs a system update.
+
+        TrueNAS 25.04 turned update.update into a method that changes the
+        update *configuration*; installing an update moved to update.run.
+        """
+        return UPDATE_RUN if self.supports(UPDATE_RUN) else LEGACY_UPDATE_RUN
 
     # ---------------------------
     #   get_systemstats

@@ -18,6 +18,14 @@ ATTRIBUTION = "Data provided by TrueNAS integration"
 # How many update cycles a reporting graph stays muted after it failed.
 SYSTEMSTATS_RETRY_AFTER = 60
 
+# System update API. TrueNAS 25.04 replaced update.check_available with
+# update.status, and repurposed update.update to change the update settings
+# rather than install an update - update.run installs one.
+UPDATE_STATUS = "update.status"
+UPDATE_RUN = "update.run"
+LEGACY_UPDATE_CHECK = "update.check_available"
+LEGACY_UPDATE_RUN = "update.update"
+
 DEFAULT_HOST = "10.0.0.1"
 DEFAULT_USERNAME = "admin"
 
