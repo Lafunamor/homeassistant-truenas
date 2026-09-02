@@ -173,10 +173,8 @@ class TrueNASEntity(CoordinatorEntity[TrueNASCoordinator], Entity):
         if self.entity_description.ha_connection_value:
             dev_connection_value = self.entity_description.ha_connection_value
             if dev_connection_value.startswith("data__"):
-                dev_connection_value = f"{self._inst}_{dev_connection_value[6:]}"
-                dev_connection_value = (
-                    f"{self._inst}_{self._data[dev_connection_value]}"
-                )
+                field = dev_connection_value[6:]
+                dev_connection_value = f"{self._inst}_{self._data.get(field, field)}"
 
         if self.entity_description.ha_group == "System":
             return DeviceInfo(

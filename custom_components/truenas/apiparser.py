@@ -39,6 +39,13 @@ def from_entry(entry, param, default="") -> str:
     else:
         return default
 
+    # The API sends null for values it has nothing to report - an unlimited
+    # memory allocation, an SSD's rotation rate, a scrub that is not running.
+    # Those must fall back to the declared default rather than reach the
+    # entities as None.
+    if ret is None:
+        return default
+
     if default != "":
         if isinstance(ret, str):
             ret = str(ret)

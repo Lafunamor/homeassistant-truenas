@@ -151,7 +151,7 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
                 {"name": "physmem", "default": 0},
             ],
             ensure_vals=[
-                {"name": "uptimeEpoch", "default": 0},
+                {"name": "uptimeEpoch", "default": None},
                 {"name": "cpu_temperature", "default": 0.0},
                 {"name": "load_shortterm", "default": 0.0},
                 {"name": "load_midterm", "default": 0.0},
@@ -358,12 +358,15 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
 
             # CPU temperature
             if tmp_graph[i]["name"] == "cputemp":
-                if "aggregations" in tmp_graph[i]:
-                    self.ds["system_info"]["cpu_temperature"] = round(
-                        max(tmp_graph[i]["aggregations"]["mean"].values()), 2
-                    )
-                else:
-                    self.ds["system_info"]["cpu_temperature"] = 0.0
+                means = (tmp_graph[i].get("aggregations") or {}).get("mean") or {}
+                readings = [
+                    value
+                    for value in means.values()
+                    if isinstance(value, (int, float)) and not isinstance(value, bool)
+                ]
+                self.ds["system_info"]["cpu_temperature"] = (
+                    round(max(readings), 2) if readings else 0.0
+                )
 
             # CPU load
             if tmp_graph[i]["name"] == "load":
@@ -639,7 +642,7 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
                 self.ds["pool"][uid]["available"] = vals["free"]
                 self.ds["pool"][uid]["total"] = vals["free"] + vals["allocated"]
 
-                self.ds["pool"][uid].pop("root_dataset")
+                self.ds["pool"][uid].pop("root_dataset", None)
 
             if self.ds["pool"][uid]["total"] > 0:
                 self.ds["pool"][uid]["usage"] = round(
