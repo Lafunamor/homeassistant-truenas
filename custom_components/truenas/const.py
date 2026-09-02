@@ -27,6 +27,23 @@ DISK_TEMPERATURE_INTERVAL = 300
 CONF_DISK_TEMPERATURES = "disk_temperatures"
 DEFAULT_DISK_TEMPERATURES = True
 
+# UPS statistics come from the reporting graphs; there is no ups.* method
+# that reports status, only configuration. Each of these graphs carries a
+# single dimension whose name depends on the UPS driver, so the value is
+# read by position rather than by name.
+UPS_SERVICE = "ups"
+UPS_GRAPHS = (
+    ("upscharge", None, "charge"),
+    ("upsruntime", None, "runtime"),
+    ("upsload", None, "load"),
+    ("upstemperature", None, "temperature"),
+    ("upscurrent", None, "current"),
+    ("upsfrequency", None, "frequency"),
+    ("upsvoltage", "battery", "voltage_battery"),
+    ("upsvoltage", "input", "voltage_input"),
+    ("upsvoltage", "output", "voltage_output"),
+)
+
 # System update API. TrueNAS 25.04 replaced update.check_available with
 # update.status, and repurposed update.update to change the update settings
 # rather than install an update - update.run installs one.

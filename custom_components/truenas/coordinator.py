@@ -35,6 +35,8 @@ from .const import (
     SYSTEMSTATS_RETRY_AFTER,
     UPDATE_RUN,
     UPDATE_STATUS,
+    UPS_GRAPHS,
+    UPS_SERVICE,
     VM_API_CONTAINER,
     VM_API_LEGACY,
     VM_API_VIRT,
@@ -44,6 +46,24 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+# ---------------------------
+#   _ups_key
+# ---------------------------
+def _ups_key(graph: dict) -> str | None:
+    """Return the value name a UPS graph maps onto."""
+    name = graph.get("name")
+    identifier = graph.get("identifier")
+    for graph_name, graph_identifier, key in UPS_GRAPHS:
+        if graph_name != name:
+            continue
+
+        # A graph without identifiers echoes its own name back as one.
+        if graph_identifier in (None, identifier):
+            return key
+
+    return None
 
 
 # ---------------------------
@@ -99,6 +119,7 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "replication": {},
             "snapshottask": {},
             "app": {},
+            "ups": {},
         }
 
         self.api = TrueNASAPI(
@@ -204,6 +225,7 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.get_replication,
             self.get_snapshottask,
             self.get_app,
+            self.get_ups,
         ]
 
         for job in jobs:
@@ -1160,6 +1182,63 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             vms[f"{VM_API_CONTAINER}-{uid}"] = vals
 
         return vms
+
+    # ---------------------------
+    #   get_ups
+    # ---------------------------
+    async def get_ups(self) -> None:
+        """Get UPS statistics from the reporting graphs.
+
+        There is no ups.* method that reports status - that namespace only
+        covers configuration - so the values come from netdata. The graphs
+        answer successfully with no data when no UPS is attached, so this is
+        skipped unless the UPS service is set up; otherwise every
+        installation would grow a set of permanently empty sensors.
+        """
+        if not self._ups_configured():
+            self.ds["ups"] = {}
+            return
+
+        if not self.supports("reporting.netdata_get_data"):
+            return
+
+        graphs = [
+            {"name": name} if ident is None else {"name": name, "identifier": ident}
+            for name, ident, _ in UPS_GRAPHS
+        ]
+        result = await self._query_graphs(graphs)
+        if result is None:
+            return
+
+        values: dict[str, Any] = {}
+        for graph in result:
+            key = _ups_key(graph)
+            if key is None:
+                continue
+
+            means = (graph.get("aggregations") or {}).get("mean") or {}
+            readings = [
+                value
+                for value in means.values()
+                if isinstance(value, (int, float)) and not isinstance(value, bool)
+            ]
+            # Each UPS graph carries exactly one dimension, but its name
+            # depends on the driver, so it is read by position.
+            if len(readings) == 1:
+                values[key] = round(readings[0], 2)
+
+        self.ds["ups"] = values
+
+    # ---------------------------
+    #   _ups_configured
+    # ---------------------------
+    def _ups_configured(self) -> bool:
+        """Return whether this NAS has its UPS service set up."""
+        return any(
+            vals.get("service") == UPS_SERVICE
+            and (vals.get("running") or vals.get("enable"))
+            for vals in self.ds["service"].values()
+        )
 
     # ---------------------------
     #   get_cloudsync
