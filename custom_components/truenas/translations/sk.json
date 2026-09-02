@@ -5,16 +5,18 @@
                 "description": "Nastavenie integrácie TrueNAS.",
                 "data": {
                     "name": "Názov integrácie",
-                    "host": "Hostiteľ (voliteľne so schémou a portom, napr. http://10.0.0.1 alebo 10.0.0.1:8443)",
+                    "host": "Hostiteľ",
                     "api_key": "API kľúč",
+                    "ssl": "Použiť HTTPS (vypnite, ak TrueNAS poskytuje iba obyčajné HTTP)",
                     "verify_ssl": "Overte certifikát SSL"
                 }
             },
             "reconfigure": {
                 "description": "Reconfigure TrueNAS integration.",
                 "data": {
-                    "host": "Hostiteľ (voliteľne so schémou a portom, napr. http://10.0.0.1 alebo 10.0.0.1:8443)",
+                    "host": "Hostiteľ",
                     "api_key": "API key",
+                    "ssl": "Použiť HTTPS (vypnite, ak TrueNAS poskytuje iba obyčajné HTTP)",
                     "verify_ssl": "Verify SSL certificate"
                 }
             }

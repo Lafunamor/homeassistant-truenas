@@ -39,15 +39,15 @@ if "legacy" in signature(connect).parameters:
 # ---------------------------
 #   build_api_url
 # ---------------------------
-def build_api_url(host: str) -> str:
+def build_api_url(host: str, use_ssl: bool = True) -> str:
     """Build the JSON-RPC websocket URL for a user supplied host.
 
     Accepts a bare host ("truenas.local", "10.0.0.1:8443") as well as a full
-    URL ("http://10.0.0.1", "https://truenas.local/api/current"). Hosts without
-    a scheme keep the historic default of TLS.
+    URL ("http://10.0.0.1", "https://truenas.local/api/current"). A scheme in
+    the host always wins over use_ssl, so a pasted URL does the right thing.
     """
     host = host.strip()
-    scheme = "wss"
+    scheme = "wss" if use_ssl else "ws"
     if "://" in host:
         raw_scheme, _, host = host.partition("://")
         scheme = SCHEME_MAP.get(raw_scheme.lower(), "")
@@ -102,12 +102,13 @@ class TrueNASAPI(object):
         host: str,
         api_key: str,
         verify_ssl: bool = True,
+        use_ssl: bool = True,
     ) -> None:
         """Initialize the TrueNAS API."""
         self._host = host
         self._api_key = api_key
         self._ssl_verify = verify_ssl
-        self._url = build_api_url(host)
+        self._url = build_api_url(host, use_ssl)
         self._ssl_context: ssl.SSLContext | None = None
         if self._url.startswith("wss://"):
             self._ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)

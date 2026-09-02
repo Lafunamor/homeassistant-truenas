@@ -14,12 +14,13 @@ from homeassistant.const import (
     CONF_API_KEY,
     CONF_HOST,
     CONF_NAME,
+    CONF_SSL,
     CONF_VERIFY_SSL,
 )
 
 from .api import TrueNASAPI
 from .apiparser import parse_api, utc_from_timestamp
-from .const import DOMAIN
+from .const import DEFAULT_SSL, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -63,6 +64,7 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
             config_entry.data[CONF_HOST],
             config_entry.data[CONF_API_KEY],
             config_entry.data[CONF_VERIFY_SSL],
+            config_entry.data.get(CONF_SSL, DEFAULT_SSL),
         )
 
         self._systemstats_errored = []

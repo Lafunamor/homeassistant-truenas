@@ -6,7 +6,13 @@ from unittest.mock import patch
 
 import pytest
 from homeassistant.config_entries import SOURCE_USER
-from homeassistant.const import CONF_API_KEY, CONF_HOST, CONF_NAME, CONF_VERIFY_SSL
+from homeassistant.const import (
+    CONF_API_KEY,
+    CONF_HOST,
+    CONF_NAME,
+    CONF_SSL,
+    CONF_VERIFY_SSL,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
@@ -14,8 +20,9 @@ from custom_components.truenas.const import DOMAIN
 
 USER_INPUT = {
     CONF_NAME: "TrueNAS",
-    CONF_HOST: "http://10.0.0.1",
+    CONF_HOST: "10.0.0.1",
     CONF_API_KEY: "api-key",
+    CONF_SSL: False,
     CONF_VERIFY_SSL: False,
 }
 
@@ -25,9 +32,10 @@ class StubAPI:
 
     instances: list["StubAPI"] = []
 
-    def __init__(self, host, api_key, verify_ssl):
+    def __init__(self, host, api_key, verify_ssl, use_ssl=True):
         """Record the constructor arguments."""
         self.host = host
+        self.use_ssl = use_ssl
         self.disconnected = False
         StubAPI.instances.append(self)
 
@@ -62,6 +70,7 @@ async def test_user_flow_creates_entry(hass: HomeAssistant) -> None:
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["data"] == USER_INPUT
+    assert StubAPI.instances[0].use_ssl is False
     assert StubAPI.instances[0].disconnected is True
 
 

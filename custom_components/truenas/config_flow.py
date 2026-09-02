@@ -17,6 +17,7 @@ from homeassistant.const import (
     CONF_API_KEY,
     CONF_HOST,
     CONF_NAME,
+    CONF_SSL,
     CONF_VERIFY_SSL,
 )
 from homeassistant.core import callback
@@ -24,6 +25,7 @@ from homeassistant.core import callback
 from .const import (
     DEFAULT_DEVICE_NAME,
     DEFAULT_HOST,
+    DEFAULT_SSL,
     DEFAULT_SSL_VERIFY,
     DOMAIN,
 )
@@ -43,6 +45,10 @@ def _base_schema(truenas_config: Mapping[str, Any]) -> vol.Schema:
         ): str,
         vol.Required(CONF_API_KEY, default=truenas_config.get(CONF_API_KEY) or ""): str,
         vol.Required(
+            CONF_SSL,
+            default=truenas_config.get(CONF_SSL, DEFAULT_SSL),
+        ): bool,
+        vol.Required(
             CONF_VERIFY_SSL,
             default=truenas_config.get(CONF_VERIFY_SSL) or DEFAULT_SSL_VERIFY,
         ): bool,
@@ -58,6 +64,10 @@ def _reconfigure_schema(truenas_config: Mapping[str, Any]) -> vol.Schema:
             CONF_HOST, default=truenas_config.get(CONF_HOST) or DEFAULT_HOST
         ): str,
         vol.Required(CONF_API_KEY, default=truenas_config.get(CONF_API_KEY) or ""): str,
+        vol.Required(
+            CONF_SSL,
+            default=truenas_config.get(CONF_SSL, DEFAULT_SSL),
+        ): bool,
         vol.Required(
             CONF_VERIFY_SSL,
             default=truenas_config.get(CONF_VERIFY_SSL) or DEFAULT_SSL_VERIFY,
@@ -101,6 +111,7 @@ class TrueNASConfigFlow(ConfigFlow, domain=DOMAIN):
                 truenas_config[CONF_HOST],
                 truenas_config[CONF_API_KEY],
                 truenas_config[CONF_VERIFY_SSL],
+                truenas_config.get(CONF_SSL, DEFAULT_SSL),
             )
         except ValueError as err:
             _LOGGER.error("TrueNAS invalid host (%s)", err)

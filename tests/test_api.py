@@ -40,6 +40,20 @@ def test_build_api_url(host: str, expected: str) -> None:
     assert build_api_url(host) == expected
 
 
+@pytest.mark.parametrize(
+    ("host", "expected"),
+    [
+        ("10.0.0.1", "ws://10.0.0.1/api/current"),
+        ("10.0.0.1:8080", "ws://10.0.0.1:8080/api/current"),
+        # An explicit scheme always wins over the toggle.
+        ("https://truenas.local", "wss://truenas.local/api/current"),
+    ],
+)
+def test_build_api_url_without_ssl(host: str, expected: str) -> None:
+    """Turning HTTPS off switches the default scheme to ws://."""
+    assert build_api_url(host, use_ssl=False) == expected
+
+
 @pytest.mark.parametrize("host", ["", "   ", "ftp://truenas.local", "http://"])
 def test_build_api_url_invalid(host: str) -> None:
     """An unusable host is rejected instead of building a broken URL."""
@@ -279,4 +293,5 @@ def test_request_ids_are_unique(connect_factory) -> None:
 def test_no_tls_context_for_plain_websocket() -> None:
     """A plain ws:// host must not be given a TLS context."""
     assert TrueNASAPI("http://10.0.0.1", "key", False)._ssl_context is None
+    assert TrueNASAPI("10.0.0.1", "key", False, use_ssl=False)._ssl_context is None
     assert TrueNASAPI("10.0.0.1", "key", False)._ssl_context is not None
