@@ -30,7 +30,7 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     _async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up entry for TrueNAS component."""
+    """Set up sensors for the TrueNAS component."""
     dispatcher = {
         "TrueNASSensor": TrueNASSensor,
         "TrueNASUptimeSensor": TrueNASUptimeSensor,
@@ -91,14 +91,14 @@ class TrueNASUptimeSensor(TrueNASSensor):
     """Define an TrueNAS Uptime sensor."""
 
     async def restart(self) -> None:
-        """Restart TrueNAS systen."""
+        """Restart the TrueNAS system."""
         await self.coordinator.api.query(
             "system.reboot",
             ["Home Assistant Integration"],
         )
 
     async def stop(self) -> None:
-        """Shutdown TrueNAS systen."""
+        """Shut the TrueNAS system down."""
         await self.coordinator.api.query(
             "system.shutdown",
             ["Home Assistant Integration"],
@@ -135,7 +135,7 @@ class TrueNASClousyncSensor(TrueNASSensor):
 
         if not isinstance(tmp_job, dict) or "job" not in tmp_job:
             _LOGGER.error(
-                "Clousync job %s (%s) invalid",
+                "Cloudsync job %s (%s) invalid",
                 self._data["description"],
                 self._data["id"],
             )
@@ -145,7 +145,7 @@ class TrueNASClousyncSensor(TrueNASSensor):
             "RUNNING",
         ]:
             _LOGGER.warning(
-                "Clousync job %s (%s) is already running",
+                "Cloudsync job %s (%s) is already running",
                 self._data["description"],
                 self._data["id"],
             )
@@ -165,7 +165,7 @@ class TrueNASClousyncSensor(TrueNASSensor):
 
         if not isinstance(tmp_job, dict) or "job" not in tmp_job:
             _LOGGER.error(
-                "Clousync job %s (%s) invalid",
+                "Cloudsync job %s (%s) invalid",
                 self._data["description"],
                 self._data["id"],
             )
@@ -175,7 +175,7 @@ class TrueNASClousyncSensor(TrueNASSensor):
             "RUNNING",
         ]:
             _LOGGER.warning(
-                "Clousync job %s (%s) is not running",
+                "Cloudsync job %s (%s) is not running",
                 self._data["description"],
                 self._data["id"],
             )

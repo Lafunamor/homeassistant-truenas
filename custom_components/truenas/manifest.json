@@ -7,8 +7,14 @@
     "config_flow": true,
     "dependencies": [],
     "documentation": "https://github.com/tomaae/homeassistant-truenas",
+    "integration_type": "hub",
     "iot_class": "local_polling",
     "issue_tracker": "https://github.com/tomaae/homeassistant-truenas/issues",
-    "requirements": ["websockets>=15.0.1"],
+    "loggers": [
+        "websockets"
+    ],
+    "requirements": [
+        "websockets>=15.0.1"
+    ],
     "version": "0.0.0"
 }

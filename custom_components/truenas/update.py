@@ -1,4 +1,4 @@
-"""TrueNAS binary sensor platform."""
+"""TrueNAS update platform."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     _async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up device tracker for TrueNAS component."""
+    """Set up update entities for the TrueNAS component."""
     dispatcher = {
         "TrueNASUpdate": TrueNASUpdate,
         "TrueNASAppUpdate": TrueNASAppUpdate,

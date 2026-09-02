@@ -25,7 +25,7 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     _async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up device tracker for OpenMediaVault component."""
+    """Set up binary sensors for the TrueNAS component."""
     dispatcher = {
         "TrueNASBinarySensor": TrueNASBinarySensor,
         "TrueNASVMBinarySensor": TrueNASVMBinarySensor,
