@@ -32,8 +32,10 @@ from .const import (
     SYSTEMSTATS_RETRY_AFTER,
     UPDATE_RUN,
     UPDATE_STATUS,
+    VM_API_CONTAINER,
     VM_API_LEGACY,
     VM_API_VIRT,
+    VM_QUERY_CONTAINER,
     VM_QUERY_LEGACY,
     VM_QUERY_VIRT,
 )
@@ -1001,10 +1003,10 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def get_vm(self) -> None:
         """Get VMs from TrueNAS.
 
-        TrueNAS 25.04 introduced virt.instance.* for Incus based instances,
-        but a system upgraded from an older release keeps its virtual
-        machines on the legacy vm.* API. Both can be populated at the same
-        time, so query whichever the NAS exposes and merge the results.
+        The API has moved twice: vm.* exists everywhere, TrueNAS 25.04 added
+        the Incus based virt.instance.*, and TrueNAS 26 drops virt.* again in
+        favour of container.* for LXC containers. Any of them can hold
+        instances, so query whichever the NAS exposes and merge the results.
         """
         vms: dict = {}
         failed = False
@@ -1012,6 +1014,7 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         for supported, getter in (
             (self.supports(VM_QUERY_VIRT), self._get_virt_instances),
             (self.supports(VM_QUERY_LEGACY), self._get_legacy_vms),
+            (self.supports(VM_QUERY_CONTAINER), self._get_containers),
         ):
             if not supported:
                 continue
@@ -1094,6 +1097,40 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             vals["memory"] = round(vals["memory"] / 1024)
             vals["running"] = vals["status"] == "RUNNING"
             vms[f"{VM_API_LEGACY}-{uid}"] = vals
+
+        return vms
+
+    # ---------------------------
+    #   _get_containers
+    # ---------------------------
+    async def _get_containers(self) -> dict | None:
+        """Get LXC containers from TrueNAS 26 and later."""
+        containers = await self._query_collection(
+            VM_QUERY_CONTAINER,
+            key="id",
+            vals=[
+                {"name": "id", "default": 0},
+                {"name": "name", "default": "unknown"},
+                {"name": "autostart", "type": "bool", "default": False},
+                {"name": "image", "source": "dataset", "default": "unknown"},
+                {"name": "status", "source": "status/state", "default": "unknown"},
+            ],
+            ensure_vals=[
+                # A container has no CPU or memory allocation of its own.
+                {"name": "type", "default": "CONTAINER"},
+                {"name": "cpu", "default": 0},
+                {"name": "memory", "default": 0},
+                {"name": "running", "type": "bool", "default": False},
+                {"name": "api", "default": VM_API_CONTAINER},
+            ],
+        )
+        if containers is None:
+            return None
+
+        vms = {}
+        for uid, vals in containers.items():
+            vals["running"] = vals["status"] == "RUNNING"
+            vms[f"{VM_API_CONTAINER}-{uid}"] = vals
 
         return vms
 

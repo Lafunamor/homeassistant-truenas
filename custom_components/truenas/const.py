@@ -26,13 +26,17 @@ UPDATE_RUN = "update.run"
 LEGACY_UPDATE_CHECK = "update.check_available"
 LEGACY_UPDATE_RUN = "update.update"
 
-# Virtual machines. TrueNAS 25.04 added the Incus based virt.instance.* API,
-# but a system upgraded from an older release keeps its VMs on the libvirt
-# based vm.* API, and both can hold instances at the same time.
+# Virtual machines and containers, which have moved twice. vm.* is the
+# libvirt based API present in every release. TrueNAS 25.04 added the Incus
+# based virt.instance.* alongside it; TrueNAS 26 removes the whole virt.*
+# namespace again and exposes LXC containers as container.*. Any of them can
+# hold instances, so all three are queried.
 VM_API_VIRT = "virt"
 VM_API_LEGACY = "vm"
+VM_API_CONTAINER = "container"
 VM_QUERY_VIRT = "virt.instance.query"
 VM_QUERY_LEGACY = "vm.query"
+VM_QUERY_CONTAINER = "container.query"
 
 # Snapshot creation. zfs.snapshot.create, which the integration used to
 # call, does not exist on any current TrueNAS.

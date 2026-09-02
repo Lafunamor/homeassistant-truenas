@@ -152,3 +152,146 @@ async def test_failed_query_keeps_known_vms(coordinator) -> None:
     await coordinator.get_vm()
 
     assert "vm-3" in coordinator.ds["vm"]
+
+
+async def test_memory_is_not_converted_twice(coordinator) -> None:
+    """A failed query must not re-divide an already converted memory value."""
+    coordinator._methods = {"virt.instance.query"}
+    coordinator.api.query.side_effect = _responses(
+        **{"virt.instance.query": [VIRT_INSTANCE]}
+    )
+    await coordinator.get_vm()
+    assert coordinator.ds["vm"]["incus-vm"]["memory"] == 8
+
+    coordinator.api.query.side_effect = _responses()
+    await coordinator.get_vm()
+
+    assert coordinator.ds["vm"]["incus-vm"]["memory"] == 8
+
+
+async def test_removed_vm_is_dropped(coordinator) -> None:
+    """A VM deleted on the NAS leaves the collection."""
+    coordinator._methods = {"vm.query"}
+    coordinator.api.query.side_effect = _responses(**{"vm.query": [LEGACY_VM]})
+    await coordinator.get_vm()
+    assert "vm-3" in coordinator.ds["vm"]
+
+    coordinator.api.query.side_effect = _responses(**{"vm.query": []})
+    await coordinator.get_vm()
+
+    assert coordinator.ds["vm"] == {}
+
+
+CONTAINER = {
+    "id": 7,
+    "uuid": "abcd",
+    "name": "jellyfin",
+    "description": "media",
+    "autostart": True,
+    "dataset": "tank/containers/jellyfin",
+    "status": {"state": "RUNNING", "pid": 4242, "domain_state": "running"},
+}
+
+
+async def test_containers_are_discovered(coordinator) -> None:
+    """TrueNAS 26 exposes LXC containers under container.query."""
+    coordinator._methods = {"vm.query", "container.query"}
+    coordinator.api.query.side_effect = _responses(
+        **{"vm.query": [LEGACY_VM], "container.query": [CONTAINER]}
+    )
+
+    await coordinator.get_vm()
+
+    container = coordinator.ds["vm"]["container-7"]
+    assert container["name"] == "jellyfin"
+    assert container["type"] == "CONTAINER"
+    assert container["running"] is True
+    assert container["api"] == "container"
+    # A container has no allocation of its own.
+    assert container["cpu"] == 0
+    assert container["memory"] == 0
+    # The libvirt VM is still there alongside it.
+    assert "vm-3" in coordinator.ds["vm"]
+
+
+async def test_container_is_not_queried_before_truenas_26(coordinator) -> None:
+    """A NAS without container.query is not asked for containers."""
+    coordinator._methods = {"virt.instance.query"}
+    coordinator.api.query.side_effect = _responses(
+        **{"virt.instance.query": [VIRT_INSTANCE]}
+    )
+
+    await coordinator.get_vm()
+
+    assert [c.args[0] for c in coordinator.api.query.call_args_list] == [
+        "virt.instance.query"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("api", "get_method", "start_method", "stop_method"),
+    [
+        (
+            "virt",
+            "virt.instance.get_instance",
+            "virt.instance.start",
+            "virt.instance.stop",
+        ),
+        ("vm", "vm.get_instance", "vm.start", "vm.stop"),
+        ("container", "container.get_instance", "container.start", "container.stop"),
+    ],
+)
+async def test_actions_reach_the_right_api(
+    api, get_method, start_method, stop_method
+) -> None:
+    """Each machine is driven through the API it came from."""
+    from unittest.mock import AsyncMock as _AsyncMock
+
+    from custom_components.truenas.binary_sensor import TrueNASVMBinarySensor
+
+    sensor = TrueNASVMBinarySensor.__new__(TrueNASVMBinarySensor)
+    sensor._data = {"id": 1, "name": "guest", "api": api}
+    sensor.coordinator = MagicMock()
+
+    nested = api != "virt"
+    stopped = {"status": {"state": "STOPPED"}} if nested else {"status": "STOPPED"}
+    sensor.coordinator.api.query = _AsyncMock(
+        side_effect=lambda method, params=None: (
+            stopped if method == get_method else None
+        )
+    )
+    await sensor.start()
+    calls = [c.args for c in sensor.coordinator.api.query.call_args_list]
+    assert calls[0][0] == get_method
+    assert calls[1][0] == start_method
+
+    running = {"status": {"state": "RUNNING"}} if nested else {"status": "RUNNING"}
+    sensor.coordinator.api.query = _AsyncMock(
+        side_effect=lambda method, params=None: (
+            running if method == get_method else None
+        )
+    )
+    await sensor.stop()
+    calls = [c.args for c in sensor.coordinator.api.query.call_args_list]
+    assert calls[1][0] == stop_method
+
+
+async def test_overcommit_only_goes_to_the_legacy_api() -> None:
+    """Only vm.start understands memory overcommitment."""
+    from unittest.mock import AsyncMock as _AsyncMock
+
+    from custom_components.truenas.binary_sensor import TrueNASVMBinarySensor
+
+    for api, expected in (("vm", [1, {"overcommit": True}]), ("container", [1])):
+        sensor = TrueNASVMBinarySensor.__new__(TrueNASVMBinarySensor)
+        sensor._data = {"id": 1, "name": "guest", "api": api}
+        sensor.coordinator = MagicMock()
+        sensor.coordinator.api.query = _AsyncMock(
+            side_effect=lambda method, params=None: (
+                {"status": {"state": "STOPPED"}} if "get_instance" in method else None
+            )
+        )
+
+        await sensor.start(overcommit=True)
+
+        assert sensor.coordinator.api.query.call_args_list[1].args[1] == expected

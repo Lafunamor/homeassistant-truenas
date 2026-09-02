@@ -12,7 +12,12 @@ from .binary_sensor_types import (
     SENSOR_SERVICES,
     SENSOR_TYPES,
 )
-from .const import SERVICE_CONTROL, VM_API_LEGACY
+from .const import (
+    SERVICE_CONTROL,
+    VM_API_CONTAINER,
+    VM_API_LEGACY,
+    VM_API_VIRT,
+)
 from .entity import TrueNASEntity, async_add_entities
 
 _LOGGER = getLogger(__name__)
@@ -72,23 +77,51 @@ class TrueNASBinarySensor(TrueNASEntity, BinarySensorEntity):
 class TrueNASVMBinarySensor(TrueNASBinarySensor):
     """Define a TrueNAS VM Binary Sensor."""
 
+    # Which API each machine came from, and how to drive it. virt.instance.*
+    # reports its state as a plain string, the other two nest it under
+    # "status", and only vm.* understands memory overcommitment.
+    APIS = {
+        VM_API_VIRT: {
+            "get": "virt.instance.get_instance",
+            "start": "virt.instance.start",
+            "stop": "virt.instance.stop",
+            "nested_state": False,
+            "stop_options": {"timeout": 0, "force": True},
+        },
+        VM_API_LEGACY: {
+            "get": "vm.get_instance",
+            "start": "vm.start",
+            "stop": "vm.stop",
+            "nested_state": True,
+            "stop_options": {"force_after_timeout": True},
+        },
+        VM_API_CONTAINER: {
+            "get": "container.get_instance",
+            "start": "container.start",
+            "stop": "container.stop",
+            "nested_state": True,
+            "stop_options": {"force_after_timeout": True},
+        },
+    }
+
     @property
-    def _is_legacy(self) -> bool:
-        """Return whether this VM lives on the libvirt based vm.* API."""
-        return self._data.get("api") == VM_API_LEGACY
+    def _api(self) -> dict:
+        """Return the API description for this machine."""
+        return self.APIS.get(self._data.get("api"), self.APIS[VM_API_VIRT])
 
     async def _async_state(self) -> str | None:
         """Return the current state of the VM, None when it cannot be read."""
-        method = "vm.get_instance" if self._is_legacy else "virt.instance.get_instance"
-        instance = await self.coordinator.api.query(method, [self._data["id"]])
+        instance = await self.coordinator.api.query(
+            self._api["get"],
+            [self._data["id"]],
+        )
 
         if not isinstance(instance, dict):
             _LOGGER.error("VM %s (%s) invalid", self._data["name"], self._data["id"])
             return None
 
-        # vm.query nests the state, virt.instance.query reports it directly.
         status = instance.get("status")
-        state = (status or {}).get("state") if self._is_legacy else status
+        state = (status or {}).get("state") if self._api["nested_state"] else status
         if not state:
             _LOGGER.error("VM %s (%s) invalid", self._data["name"], self._data["id"])
             return None
@@ -107,15 +140,11 @@ class TrueNASVMBinarySensor(TrueNASBinarySensor):
             )
             return
 
-        if self._is_legacy:
-            params = [self._data["id"], {"overcommit": overcommit}]
-        else:
-            params = [self._data["id"]]
+        params = [self._data["id"]]
+        if self._data.get("api") == VM_API_LEGACY:
+            params.append({"overcommit": overcommit})
 
-        await self.coordinator.api.query(
-            "vm.start" if self._is_legacy else "virt.instance.start",
-            params,
-        )
+        await self.coordinator.api.query(self._api["start"], params)
 
     async def stop(self):
         """Stop a VM."""
@@ -129,14 +158,9 @@ class TrueNASVMBinarySensor(TrueNASBinarySensor):
             )
             return
 
-        if self._is_legacy:
-            params = [self._data["id"], {"force_after_timeout": True}]
-        else:
-            params = [self._data["id"], {"timeout": 0, "force": True}]
-
         await self.coordinator.api.query(
-            "vm.stop" if self._is_legacy else "virt.instance.stop",
-            params,
+            self._api["stop"],
+            [self._data["id"], self._api["stop_options"]],
         )
 
 
