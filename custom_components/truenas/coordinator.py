@@ -32,6 +32,10 @@ from .const import (
     SYSTEMSTATS_RETRY_AFTER,
     UPDATE_RUN,
     UPDATE_STATUS,
+    VM_API_LEGACY,
+    VM_API_VIRT,
+    VM_QUERY_LEGACY,
+    VM_QUERY_VIRT,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -995,9 +999,43 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     #   get_vm
     # ---------------------------
     async def get_vm(self) -> None:
-        """Get VMs from TrueNAS."""
-        vm = await self._query_collection(
-            "virt.instance.query",
+        """Get VMs from TrueNAS.
+
+        TrueNAS 25.04 introduced virt.instance.* for Incus based instances,
+        but a system upgraded from an older release keeps its virtual
+        machines on the legacy vm.* API. Both can be populated at the same
+        time, so query whichever the NAS exposes and merge the results.
+        """
+        vms: dict = {}
+        failed = False
+
+        for supported, getter in (
+            (self.supports(VM_QUERY_VIRT), self._get_virt_instances),
+            (self.supports(VM_QUERY_LEGACY), self._get_legacy_vms),
+        ):
+            if not supported:
+                continue
+
+            parsed = await getter()
+            if parsed is None:
+                failed = True
+            else:
+                vms.update(parsed)
+
+        if failed:
+            # Keep the machines we cannot re-read rather than dropping them.
+            self.ds["vm"].update(vms)
+            return
+
+        self.ds["vm"] = vms
+
+    # ---------------------------
+    #   _get_virt_instances
+    # ---------------------------
+    async def _get_virt_instances(self) -> dict | None:
+        """Get Incus instances from TrueNAS."""
+        vms = await self._query_collection(
+            VM_QUERY_VIRT,
             key="id",
             vals=[
                 {"name": "id", "default": 0},
@@ -1011,16 +1049,53 @@ class TrueNASCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ],
             ensure_vals=[
                 {"name": "running", "type": "bool", "default": False},
+                {"name": "api", "default": VM_API_VIRT},
             ],
         )
-        if vm is None:
-            return
+        if vms is None:
+            return None
 
-        self.ds["vm"] = vm
+        for vals in vms.values():
+            # virt.instance.query reports memory in bytes
+            vals["memory"] = round(vals["memory"] / 1024 / 1024 / 1024)
+            vals["running"] = vals["status"] == "RUNNING"
 
-        for uid, vals in self.ds["vm"].items():
-            self.ds["vm"][uid]["memory"] = round(vals["memory"] / 1024 / 1024 / 1024)
-            self.ds["vm"][uid]["running"] = vals["status"] == "RUNNING"
+        return vms
+
+    # ---------------------------
+    #   _get_legacy_vms
+    # ---------------------------
+    async def _get_legacy_vms(self) -> dict | None:
+        """Get libvirt based VMs from TrueNAS."""
+        legacy = await self._query_collection(
+            VM_QUERY_LEGACY,
+            key="id",
+            vals=[
+                {"name": "id", "default": 0},
+                {"name": "name", "default": "unknown"},
+                {"name": "cpu", "source": "vcpus", "default": 0},
+                {"name": "memory", "default": 0},
+                {"name": "autostart", "type": "bool", "default": False},
+                {"name": "image", "source": "description", "default": "unknown"},
+                {"name": "status", "source": "status/state", "default": "unknown"},
+            ],
+            ensure_vals=[
+                {"name": "type", "default": "VM"},
+                {"name": "running", "type": "bool", "default": False},
+                {"name": "api", "default": VM_API_LEGACY},
+            ],
+        )
+        if legacy is None:
+            return None
+
+        vms = {}
+        for uid, vals in legacy.items():
+            # vm.query reports memory in megabytes
+            vals["memory"] = round(vals["memory"] / 1024)
+            vals["running"] = vals["status"] == "RUNNING"
+            vms[f"{VM_API_LEGACY}-{uid}"] = vals
+
+        return vms
 
     # ---------------------------
     #   get_cloudsync

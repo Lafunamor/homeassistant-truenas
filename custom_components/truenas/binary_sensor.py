@@ -12,6 +12,7 @@ from .binary_sensor_types import (
     SENSOR_SERVICES,
     SENSOR_TYPES,
 )
+from .const import VM_API_LEGACY
 from .entity import TrueNASEntity, async_add_entities
 
 _LOGGER = getLogger(__name__)
@@ -71,48 +72,71 @@ class TrueNASBinarySensor(TrueNASEntity, BinarySensorEntity):
 class TrueNASVMBinarySensor(TrueNASBinarySensor):
     """Define a TrueNAS VM Binary Sensor."""
 
-    async def start(self, overcommit: bool = False):
-        """Start a VM."""  # virt.instance.start
-        tmp_vm = await self.coordinator.api.query(
-            "virt.instance.get_instance",
-            [self._data["id"]],
-        )
+    @property
+    def _is_legacy(self) -> bool:
+        """Return whether this VM lives on the libvirt based vm.* API."""
+        return self._data.get("api") == VM_API_LEGACY
 
-        if not isinstance(tmp_vm, dict) or "status" not in tmp_vm:
+    async def _async_state(self) -> str | None:
+        """Return the current state of the VM, None when it cannot be read."""
+        method = "vm.get_instance" if self._is_legacy else "virt.instance.get_instance"
+        instance = await self.coordinator.api.query(method, [self._data["id"]])
+
+        if not isinstance(instance, dict):
             _LOGGER.error("VM %s (%s) invalid", self._data["name"], self._data["id"])
+            return None
+
+        # vm.query nests the state, virt.instance.query reports it directly.
+        status = instance.get("status")
+        state = (status or {}).get("state") if self._is_legacy else status
+        if not state:
+            _LOGGER.error("VM %s (%s) invalid", self._data["name"], self._data["id"])
+            return None
+
+        return state
+
+    async def start(self, overcommit: bool = False):
+        """Start a VM."""
+        state = await self._async_state()
+        if state is None:
             return
 
-        if tmp_vm["status"] != "STOPPED":
+        if state != "STOPPED":
             _LOGGER.warning(
                 "VM %s (%s) is not down", self._data["name"], self._data["id"]
             )
             return
 
+        if self._is_legacy:
+            params = [self._data["id"], {"overcommit": overcommit}]
+        else:
+            params = [self._data["id"]]
+
         await self.coordinator.api.query(
-            "virt.instance.start",
-            [self._data["id"]],
+            "vm.start" if self._is_legacy else "virt.instance.start",
+            params,
         )
 
     async def stop(self):
         """Stop a VM."""
-        tmp_vm = await self.coordinator.api.query(
-            "virt.instance.get_instance",
-            [self._data["id"]],
-        )
-
-        if not isinstance(tmp_vm, dict) or "status" not in tmp_vm:
-            _LOGGER.error("VM %s (%s) invalid", self._data["name"], self._data["id"])
+        state = await self._async_state()
+        if state is None:
             return
 
-        if tmp_vm["status"] != "RUNNING":
+        if state != "RUNNING":
             _LOGGER.warning(
                 "VM %s (%s) is not up", self._data["name"], self._data["id"]
             )
             return
 
+        if self._is_legacy:
+            params = [self._data["id"], {"force_after_timeout": True}]
+        else:
+            params = [self._data["id"], {"timeout": 0, "force": True}]
+
         await self.coordinator.api.query(
-            "virt.instance.stop",
-            [self._data["id"], {"timeout": 0, "force": True}],
+            "vm.stop" if self._is_legacy else "virt.instance.stop",
+            params,
         )
 
 

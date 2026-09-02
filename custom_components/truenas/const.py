@@ -26,6 +26,14 @@ UPDATE_RUN = "update.run"
 LEGACY_UPDATE_CHECK = "update.check_available"
 LEGACY_UPDATE_RUN = "update.update"
 
+# Virtual machines. TrueNAS 25.04 added the Incus based virt.instance.* API,
+# but a system upgraded from an older release keeps its VMs on the libvirt
+# based vm.* API, and both can hold instances at the same time.
+VM_API_VIRT = "virt"
+VM_API_LEGACY = "vm"
+VM_QUERY_VIRT = "virt.instance.query"
+VM_QUERY_LEGACY = "vm.query"
+
 DEFAULT_HOST = "10.0.0.1"
 DEFAULT_USERNAME = "admin"
 
