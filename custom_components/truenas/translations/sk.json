@@ -7,7 +7,7 @@
                     "name": "Názov integrácie",
                     "host": "Hostiteľ",
                     "api_key": "API kľúč",
-                    "ssl": "Použiť HTTPS (vypnite, ak TrueNAS poskytuje iba obyčajné HTTP)",
+                    "ssl": "Použiť HTTPS (prepne na obyčajné HTTP, ak nič neodpovedá)",
                     "verify_ssl": "Overte certifikát SSL"
                 }
             },
@@ -16,7 +16,7 @@
                 "data": {
                     "host": "Hostiteľ",
                     "api_key": "API key",
-                    "ssl": "Použiť HTTPS (vypnite, ak TrueNAS poskytuje iba obyčajné HTTP)",
+                    "ssl": "Použiť HTTPS (prepne na obyčajné HTTP, ak nič neodpovedá)",
                     "verify_ssl": "Verify SSL certificate"
                 }
             }

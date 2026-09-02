@@ -7,7 +7,7 @@
                     "name": "Nome da integração",
                     "host": "Host",
                     "api_key": "Chave API",
-                    "ssl": "Usar HTTPS (desative se o TrueNAS só atende em HTTP simples)",
+                    "ssl": "Usar HTTPS (usa HTTP simples se nada responder)",
                     "verify_ssl": "Verificar certificado SSL"
                 }
             },
@@ -16,7 +16,7 @@
                 "data": {
                     "host": "Host",
                     "api_key": "API key",
-                    "ssl": "Usar HTTPS (desative se o TrueNAS só atende em HTTP simples)",
+                    "ssl": "Usar HTTPS (usa HTTP simples se nada responder)",
                     "verify_ssl": "Verify SSL certificate"
                 }
             }

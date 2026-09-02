@@ -65,6 +65,28 @@ def build_api_url(host: str, use_ssl: bool = True) -> str:
     return f"{scheme}://{split.netloc}{path}"
 
 
+# Transport level failures that mean "nothing is answering here", after which
+# it is safe to try the other scheme. TLS failures are deliberately absent: a
+# certificate problem must not silently downgrade the connection to plaintext.
+RETRYABLE_SCHEME_ERRORS = frozenset(
+    {
+        "cannot_connect",
+        "connection_refused",
+        "handshake_timeout",
+        "http_used",
+        "websocket_not_supported",
+    }
+)
+
+
+# ---------------------------
+#   has_scheme
+# ---------------------------
+def has_scheme(host: str) -> bool:
+    """Return True when the user pinned a scheme in the host field."""
+    return "://" in host.strip()
+
+
 # ---------------------------
 #   error_code
 # ---------------------------
@@ -375,6 +397,11 @@ class TrueNASAPI(object):
                 return str(error["code"])
 
         return "rpc_error"
+
+    @property
+    def url(self) -> str:
+        """Return the endpoint this client talks to."""
+        return self._url
 
     @property
     def error(self):

@@ -29,7 +29,7 @@ from .const import (
     DEFAULT_SSL_VERIFY,
     DOMAIN,
 )
-from .api import TrueNASAPI
+from .api import RETRYABLE_SCHEME_ERRORS, TrueNASAPI, has_scheme
 
 _LOGGER = getLogger(__name__)
 
@@ -104,14 +104,42 @@ class TrueNASConfigFlow(ConfigFlow, domain=DOMAIN):
     async def _async_test_connection(
         self, truenas_config: dict[str, Any]
     ) -> str | None:
-        """Return an error code when the TrueNAS API cannot be reached."""
+        """Find a working endpoint for the configured host.
+
+        The preferred scheme is tried first. If nothing is listening there,
+        and the user did not pin a scheme in the host field, the other scheme
+        is tried as well and the result is stored on the entry.
+        """
+        host = truenas_config[CONF_HOST]
+        preferred = truenas_config.get(CONF_SSL, DEFAULT_SSL)
+        candidates = [preferred]
+        if not has_scheme(host):
+            candidates.append(not preferred)
+
+        first_error: str | None = None
+        for use_ssl in candidates:
+            errorcode = await self._async_probe(truenas_config, use_ssl)
+            if errorcode is None:
+                truenas_config[CONF_SSL] = use_ssl
+                return None
+
+            first_error = first_error or errorcode
+            if errorcode not in RETRYABLE_SCHEME_ERRORS:
+                return errorcode
+
+        return first_error or "cannot_connect"
+
+    async def _async_probe(
+        self, truenas_config: dict[str, Any], use_ssl: bool
+    ) -> str | None:
+        """Return an error code when one endpoint cannot be reached."""
         try:
             api = await self.hass.async_add_executor_job(
                 TrueNASAPI,
                 truenas_config[CONF_HOST],
                 truenas_config[CONF_API_KEY],
                 truenas_config[CONF_VERIFY_SSL],
-                truenas_config.get(CONF_SSL, DEFAULT_SSL),
+                use_ssl,
             )
         except ValueError as err:
             _LOGGER.error("TrueNAS invalid host (%s)", err)
@@ -125,9 +153,10 @@ class TrueNASConfigFlow(ConfigFlow, domain=DOMAIN):
             await self.hass.async_add_executor_job(api.disconnect)
 
         if conn:
+            _LOGGER.info("TrueNAS reachable at %s", api.url)
             return None
 
-        _LOGGER.error("TrueNAS connection error (%s)", errorcode)
+        _LOGGER.debug("TrueNAS %s not reachable (%s)", api.url, errorcode)
         return errorcode or "cannot_connect"
 
     async def async_step_user(

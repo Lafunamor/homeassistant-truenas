@@ -36,11 +36,15 @@ class StubAPI:
         """Record the constructor arguments."""
         self.host = host
         self.use_ssl = use_ssl
+        self.url = f"{'wss' if use_ssl else 'ws'}://{host}/api/current"
         self.disconnected = False
         StubAPI.instances.append(self)
 
     def connection_test(self):
         """Return the canned connection result."""
+        if StubAPI.results_by_scheme is not None:
+            return StubAPI.results_by_scheme[self.use_ssl]
+
         return StubAPI.result
 
     def disconnect(self):
@@ -53,6 +57,7 @@ def reset_stub():
     """Reset the stub between tests."""
     StubAPI.instances = []
     StubAPI.result = (True, "")
+    StubAPI.results_by_scheme = None
     yield
 
 
@@ -115,3 +120,71 @@ async def test_user_flow_unknown_error_code(hass: HomeAssistant) -> None:
         )
 
     assert result["errors"] == {CONF_HOST: "cannot_connect"}
+
+
+async def test_user_flow_falls_back_to_plain_http(hass: HomeAssistant) -> None:
+    """Nothing listening on wss:// makes the flow try ws:// and store it."""
+    StubAPI.results_by_scheme = {True: (False, "connection_refused"), False: (True, "")}
+    with patch("custom_components.truenas.config_flow.TrueNASAPI", StubAPI):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {**USER_INPUT, CONF_SSL: True}
+        )
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_SSL] is False
+    assert [api.use_ssl for api in StubAPI.instances] == [True, False]
+
+
+async def test_user_flow_does_not_downgrade_after_tls_error(
+    hass: HomeAssistant,
+) -> None:
+    """A certificate problem must not silently fall back to plaintext."""
+    StubAPI.results_by_scheme = {
+        True: (False, "certificate_verify_failed"),
+        False: (True, ""),
+    }
+    with patch("custom_components.truenas.config_flow.TrueNASAPI", StubAPI):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {**USER_INPUT, CONF_SSL: True}
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {CONF_HOST: "certificate_verify_failed"}
+    assert [api.use_ssl for api in StubAPI.instances] == [True]
+
+
+async def test_user_flow_respects_pinned_scheme(hass: HomeAssistant) -> None:
+    """A scheme in the host field disables the fallback probe."""
+    StubAPI.results_by_scheme = {True: (False, "connection_refused"), False: (True, "")}
+    with patch("custom_components.truenas.config_flow.TrueNASAPI", StubAPI):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {**USER_INPUT, CONF_HOST: "https://10.0.0.1", CONF_SSL: True},
+        )
+
+    assert result["type"] is FlowResultType.FORM
+    assert len(StubAPI.instances) == 1
+
+
+async def test_user_flow_stops_on_invalid_key(hass: HomeAssistant) -> None:
+    """A reachable endpoint with a bad key is not retried on the other scheme."""
+    StubAPI.results_by_scheme = {True: (False, "invalid_key"), False: (True, "")}
+    with patch("custom_components.truenas.config_flow.TrueNASAPI", StubAPI):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": SOURCE_USER}
+        )
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {**USER_INPUT, CONF_SSL: True}
+        )
+
+    assert result["errors"] == {CONF_HOST: "invalid_key"}
+    assert len(StubAPI.instances) == 1
