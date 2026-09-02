@@ -12,11 +12,11 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import (
     PERCENTAGE,
+    EntityCategory,
     UnitOfTemperature,
     UnitOfDataRate,
     UnitOfInformation,
 )
-from homeassistant.helpers.entity import EntityCategory
 
 from .const import (
     SCHEMA_SERVICE_CLOUDSYNC_RUN,

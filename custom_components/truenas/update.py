@@ -83,15 +83,17 @@ class TrueNASUpdate(TrueNASEntity, UpdateEntity):
         await self.coordinator.async_refresh()
 
     @property
-    def in_progress(self) -> int:
+    def in_progress(self) -> bool:
+        """Return true while an update is being installed."""
+        return self._data["update_state"] == "RUNNING"
+
+    @property
+    def update_percentage(self) -> int | None:
         """Update installation progress."""
         if self._data["update_state"] != "RUNNING":
-            return False
+            return None
 
-        if self._data["update_progress"] == 0:
-            self._data["update_progress"] = 1
-
-        return self._data["update_progress"]
+        return self._data["update_progress"] or None
 
 
 # ---------------------------

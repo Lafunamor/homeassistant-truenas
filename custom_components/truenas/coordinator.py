@@ -21,7 +21,9 @@ from homeassistant.const import (
 )
 
 from .api import TrueNASAPI
-from .apiparser import parse_api, utc_from_timestamp
+from homeassistant.util.dt import utc_from_timestamp
+
+from .apiparser import parse_api
 from .const import DEFAULT_SSL, DOMAIN, SYSTEMSTATS_RETRY_AFTER
 
 _LOGGER = logging.getLogger(__name__)
