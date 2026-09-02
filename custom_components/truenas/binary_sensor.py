@@ -12,7 +12,7 @@ from .binary_sensor_types import (
     SENSOR_SERVICES,
     SENSOR_TYPES,
 )
-from .const import VM_API_LEGACY
+from .const import SERVICE_CONTROL, VM_API_LEGACY
 from .entity import TrueNASEntity, async_add_entities
 
 _LOGGER = getLogger(__name__)
@@ -146,20 +146,29 @@ class TrueNASVMBinarySensor(TrueNASBinarySensor):
 class TrueNASServiceBinarySensor(TrueNASBinarySensor):
     """Define a TrueNAS Service Binary Sensor."""
 
-    async def start(self):
-        """Start a Service."""
-        tmp_service = await self.coordinator.api.query(
+    async def _async_control(self, verb: str, require_running: bool) -> None:
+        """Run a service operation once the current state allows it."""
+        service = await self.coordinator.api.query(
             "service.get_instance",
             [self._data["id"]],
         )
 
-        if not isinstance(tmp_service, dict) or "state" not in tmp_service:
+        if not isinstance(service, dict) or "state" not in service:
             _LOGGER.error(
                 "Service %s (%s) invalid", self._data["service"], self._data["id"]
             )
             return
 
-        if tmp_service["state"] != "STOPPED":
+        stopped = service["state"] == "STOPPED"
+        if require_running and stopped:
+            _LOGGER.warning(
+                "Service %s (%s) is not running",
+                self._data["service"],
+                self._data["id"],
+            )
+            return
+
+        if not require_running and not stopped:
             _LOGGER.warning(
                 "Service %s (%s) is not stopped",
                 self._data["service"],
@@ -167,95 +176,36 @@ class TrueNASServiceBinarySensor(TrueNASBinarySensor):
             )
             return
 
-        await self.coordinator.api.query(
-            "service.start",
-            [self._data["service"]],
-        )
+        # TrueNAS 26 replaced service.start/stop/restart/reload with a single
+        # service.control taking the operation as its first argument.
+        if self.coordinator.supports(SERVICE_CONTROL):
+            await self.coordinator.api.query(
+                SERVICE_CONTROL,
+                [verb, self._data["service"]],
+            )
+        else:
+            await self.coordinator.api.query(
+                f"service.{verb.lower()}",
+                [self._data["service"]],
+            )
 
         await self.coordinator.async_refresh()
+
+    async def start(self):
+        """Start a Service."""
+        await self._async_control("START", require_running=False)
 
     async def stop(self):
         """Stop a Service."""
-        tmp_service = await self.coordinator.api.query(
-            "service.get_instance",
-            [self._data["id"]],
-        )
-
-        if not isinstance(tmp_service, dict) or "state" not in tmp_service:
-            _LOGGER.error(
-                "Service %s (%s) invalid", self._data["service"], self._data["id"]
-            )
-            return
-
-        if tmp_service["state"] == "STOPPED":
-            _LOGGER.warning(
-                "Service %s (%s) is not running",
-                self._data["service"],
-                self._data["id"],
-            )
-            return
-
-        await self.coordinator.api.query(
-            "service.stop",
-            [self._data["service"]],
-        )
-        await self.coordinator.async_refresh()
+        await self._async_control("STOP", require_running=True)
 
     async def restart(self):
         """Restart a Service."""
-        tmp_service = await self.coordinator.api.query(
-            "service.get_instance",
-            [self._data["id"]],
-        )
-
-        if not isinstance(tmp_service, dict) or "state" not in tmp_service:
-            _LOGGER.error(
-                "Service %s (%s) invalid", self._data["service"], self._data["id"]
-            )
-            return
-
-        if tmp_service["state"] == "STOPPED":
-            _LOGGER.warning(
-                "Service %s (%s) is not running",
-                self._data["service"],
-                self._data["id"],
-            )
-            return
-
-        await self.coordinator.api.query(
-            "service.restart",
-            [self._data["service"]],
-        )
-
-        await self.coordinator.async_refresh()
+        await self._async_control("RESTART", require_running=True)
 
     async def reload(self):
         """Reload a Service."""
-        tmp_service = await self.coordinator.api.query(
-            "service.get_instance",
-            [self._data["id"]],
-        )
-
-        if not isinstance(tmp_service, dict) or "state" not in tmp_service:
-            _LOGGER.error(
-                "Service %s (%s) invalid", self._data["service"], self._data["id"]
-            )
-            return
-
-        if tmp_service["state"] == "STOPPED":
-            _LOGGER.warning(
-                "Service %s (%s) is not running",
-                self._data["service"],
-                self._data["id"],
-            )
-            return
-
-        await self.coordinator.api.query(
-            "service.reload",
-            [self._data["service"]],
-        )
-
-        await self.coordinator.async_refresh()
+        await self._async_control("RELOAD", require_running=True)
 
 
 # ---------------------------

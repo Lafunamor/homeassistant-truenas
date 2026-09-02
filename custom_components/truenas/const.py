@@ -38,6 +38,10 @@ VM_QUERY_LEGACY = "vm.query"
 # call, does not exist on any current TrueNAS.
 SNAPSHOT_CREATE = "pool.snapshot.create"
 
+# Service control. TrueNAS 26 removed service.start/stop/restart/reload in
+# favour of a single service.control(VERB, service).
+SERVICE_CONTROL = "service.control"
+
 DEFAULT_HOST = "10.0.0.1"
 DEFAULT_USERNAME = "admin"
 
