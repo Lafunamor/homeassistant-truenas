@@ -15,6 +15,9 @@ DOMAIN = "truenas"
 DEFAULT_NAME = "root"
 ATTRIBUTION = "Data provided by TrueNAS integration"
 
+# How many update cycles a reporting graph stays muted after it failed.
+SYSTEMSTATS_RETRY_AFTER = 60
+
 DEFAULT_HOST = "10.0.0.1"
 DEFAULT_USERNAME = "admin"
 

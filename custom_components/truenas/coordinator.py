@@ -21,9 +21,21 @@ from homeassistant.const import (
 
 from .api import TrueNASAPI
 from .apiparser import parse_api, utc_from_timestamp
-from .const import DEFAULT_SSL, DOMAIN
+from .const import DEFAULT_SSL, DOMAIN, SYSTEMSTATS_RETRY_AFTER
 
 _LOGGER = logging.getLogger(__name__)
+
+
+# ---------------------------
+#   _graph_key
+# ---------------------------
+def _graph_key(graph: dict) -> tuple[str, str | None]:
+    """Return the identity of a reporting graph.
+
+    The interface graphs are requested once per identifier, so the name alone
+    does not identify them.
+    """
+    return graph.get("name", ""), graph.get("identifier")
 
 
 # ---------------------------
@@ -76,7 +88,7 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
             config_entry.data.get(CONF_SSL, DEFAULT_SSL),
         )
 
-        self._systemstats_errored = []
+        self._systemstats_errored: dict[tuple[str, str | None], int] = {}
         self.datasets_hass_device_id = None
         self.last_updatecheck_update = datetime(1970, 1, 1)
 
@@ -318,9 +330,7 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
         if self._is_virtual:
             tmp_graphs = [tmp for tmp in tmp_graphs if tmp["name"] != "cputemp"]
 
-        tmp_graphs = [
-            tmp for tmp in tmp_graphs if tmp["name"] not in self._systemstats_errored
-        ]
+        tmp_graphs = [tmp for tmp in tmp_graphs if not self._graph_is_muted(tmp)]
 
         if not tmp_graphs:
             return
@@ -341,7 +351,7 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
                         return
 
                     failed.append(tmp["name"])
-                    self._systemstats_errored.append(tmp["name"])
+                    self._systemstats_errored[_graph_key(tmp)] = SYSTEMSTATS_RETRY_AFTER
                 else:
                     tmp_graph.extend(tmp2)
 
@@ -429,6 +439,32 @@ class TrueNASCoordinator(DataUpdateCoordinator[None]):
                 # called arcsize.
                 tmp_arr = ("size", "arc_size")
                 self._systemstats_process(tmp_arr, tmp_graph[i], "arcsize")
+
+    # ---------------------------
+    #   _graph_is_muted
+    # ---------------------------
+    def _graph_is_muted(self, graph: dict) -> bool:
+        """Return whether a graph is skipped for this cycle.
+
+        A graph that fails is muted for a number of updates rather than for
+        the lifetime of the integration: netdata restarting during a system
+        update used to freeze a statistic at its last value until Home
+        Assistant was restarted, which reads as a plausible but stale number.
+
+        Muting is per identifier as well as per name, so one interface the
+        NAS cannot report does not silence the traffic of every other one.
+        """
+        key = _graph_key(graph)
+        remaining = self._systemstats_errored.get(key)
+        if remaining is None:
+            return False
+
+        if remaining <= 1:
+            del self._systemstats_errored[key]
+            return False
+
+        self._systemstats_errored[key] = remaining - 1
+        return True
 
     # ---------------------------
     #   _query_graphs

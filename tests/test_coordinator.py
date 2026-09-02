@@ -64,14 +64,17 @@ async def test_systemstats_retries_each_graph(coordinator) -> None:
     coordinator.api.query.side_effect = query
     await coordinator.get_systemstats()
 
-    assert coordinator._systemstats_errored == ["cputemp"]
+    assert set(coordinator._systemstats_errored) == {("cputemp", None)}
     # Every other graph still made it through the per graph retry.
     assert coordinator.ds["system_info"]["cpu_usage"] == 12.5
 
 
 async def test_systemstats_skips_errored_graphs(coordinator) -> None:
     """Graphs known to fail are not requested again."""
-    coordinator._systemstats_errored = ["cputemp", "arcsize"]
+    coordinator._systemstats_errored = {
+        ("cputemp", None): 5,
+        ("arcsize", None): 5,
+    }
     coordinator.api.query.side_effect = lambda service, params=None: []
 
     await coordinator.get_systemstats()
@@ -90,7 +93,7 @@ async def test_systemstats_stops_when_disconnected(coordinator) -> None:
     await coordinator.get_systemstats()
 
     assert coordinator.api.query.call_count == 1
-    assert coordinator._systemstats_errored == []
+    assert coordinator._systemstats_errored == {}
 
 
 async def test_systemstats_without_aggregations(coordinator) -> None:
@@ -152,3 +155,49 @@ async def test_interface_graph_with_incomplete_aggregations(coordinator) -> None
     await coordinator.get_systemstats()
 
     assert coordinator.ds["interface"]["eth0"] == {"rx": 0.0, "tx": 0.0}
+
+
+async def test_muted_graph_is_retried_eventually(coordinator) -> None:
+    """A graph that failed once comes back instead of staying dead."""
+    coordinator._systemstats_errored = {("cputemp", None): 2}
+    coordinator.api.query.side_effect = lambda service, params=None: []
+
+    await coordinator.get_systemstats()
+    assert "cputemp" not in _graph_names(coordinator.api.query.call_args)
+
+    await coordinator.get_systemstats()
+
+    assert "cputemp" in _graph_names(coordinator.api.query.call_args)
+    assert coordinator._systemstats_errored == {}
+
+
+async def test_one_bad_interface_does_not_mute_the_others(coordinator) -> None:
+    """Muting is per identifier, not per graph name."""
+    coordinator.ds["interface"] = {"eth0": {}, "eth1": {}}
+
+    def query(service, params=None):
+        graphs = params[0]
+        if len(graphs) > 1:
+            return None
+
+        # eth0 cannot be reported, everything else can
+        if graphs[0].get("identifier") == "eth0":
+            return None
+
+        return []
+
+    coordinator.api.query.side_effect = query
+    await coordinator.get_systemstats()
+
+    assert ("interface", "eth0") in coordinator._systemstats_errored
+    assert ("interface", "eth1") not in coordinator._systemstats_errored
+
+    coordinator.api.query.side_effect = lambda service, params=None: []
+    await coordinator.get_systemstats()
+
+    requested = [
+        graph.get("identifier")
+        for graph in coordinator.api.query.call_args.kwargs["params"][0]
+        if graph["name"] == "interface"
+    ]
+    assert requested == ["eth1"]
