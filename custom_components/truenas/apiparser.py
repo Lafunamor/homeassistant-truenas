@@ -46,6 +46,11 @@ def from_entry(entry, param, default="") -> str:
     if ret is None:
         return default
 
+    # bool is a subclass of int, so it has to be settled before the numeric
+    # coercion below turns True into 1.
+    if isinstance(ret, bool):
+        return ret
+
     if default != "":
         if isinstance(ret, str):
             ret = str(ret)

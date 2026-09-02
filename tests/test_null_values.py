@@ -171,3 +171,20 @@ async def test_uptime_default_is_not_an_int(coordinator) -> None:
     await coordinator.get_systeminfo()
 
     assert coordinator.ds["system_info"]["uptimeEpoch"] is None
+
+
+def test_boolean_values_are_not_coerced_to_int() -> None:
+    """A bool declared with a text default must stay a bool.
+
+    pool.dataset.query returns checksum/parsed as a boolean while the value
+    is declared with a string default, and bool is a subclass of int.
+    """
+    assert (
+        from_entry({"checksum": {"parsed": True}}, "checksum/parsed", "unknown") is True
+    )
+    assert (
+        from_entry({"checksum": {"parsed": False}}, "checksum/parsed", "unknown")
+        is False
+    )
+    # a real integer is still coerced as before
+    assert from_entry({"n": 5.0}, "n", 0) == 5
